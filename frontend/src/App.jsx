@@ -6,9 +6,11 @@ import {
   MessageCircle, X, Bot, Loader2, Check, Brain, Leaf, Activity, Menu, Settings
 } from 'lucide-react';
 
-// У dev — повний URL Django (з .env: VITE_API_BASE=http://127.0.0.1:8000)
-// У prod-білді — порожнє, бо фронт і бек на одному домені (relative URL).
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+// У prod-білді — завжди relative URL (фронт і бек на одному домені).
+// У dev — повний URL Django (за замовчуванням 127.0.0.1:8000, можна перевизначити через VITE_API_BASE у .env).
+const API_BASE = import.meta.env.PROD
+  ? ''
+  : (import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000');
 
 // --- Тонкий роутер на History API ---
 const useRoute = () => {
