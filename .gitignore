@@ -24,12 +24,12 @@ backend/staticfiles/
 # (історично тут була примітка про auto-generated index.html, але краще
 #  тримати placeholder у репо, щоб папка templates/ точно існувала після clone)
 
-# Environment vars
+# Environment vars — ЖОДНИХ .env у git, бо вони містять секрети.
+# Виняток лише для .env.example з шаблоном значень.
 .env
 .env.*
 !.env.example
 !frontend/.env.example
-!frontend/.env.production
 
 # =============================================================
 #  Node / Vite / React

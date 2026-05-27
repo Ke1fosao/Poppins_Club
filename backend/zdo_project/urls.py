@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/content/', views.get_site_content),
     path('api/contact/', views.submit_contact),
     path('api/survey/', views.submit_survey),
+    path('api/chat/', views.submit_chat),
 ]
 
 # Віддача media і кореня frontend/dist у dev (у prod це робить WhiteNoise + PA static maps)

@@ -1762,95 +1762,6 @@ const SurveyFlow = ({ navigate, siteData }) => {
   );
 };
 
-// Будує повний контекст для AI з усіх даних бази
-const buildSiteContext = (data) => {
-  const { settings = {}, content = {}, about_cards = [], directions_first = [], directions_second = [], services = [], faqs = [], premises = [] } = data || {};
-  const brand = `${settings.nav_brand || ''} ${settings.nav_brand_accent || ''}`.trim();
-
-  const list = (arr) => arr.length ? arr.map(s => `- ${s}`).join('\n') : '(не вказано)';
-
-  const aboutCardsStr = about_cards.length
-    ? about_cards.map(c => `- ${c.title}: ${c.text}`).join('\n')
-    : '(не вказано)';
-
-  const allDirections = [...directions_first, ...directions_second];
-  const directionsStr = allDirections.length
-    ? allDirections.map(d => `- ${d.title}: ${d.text}`).join('\n')
-    : '(не вказано)';
-
-  const servicesStr = services.length
-    ? services.map(s => `• ${s.title} (вік: ${s.age})\n  ${s.desc}\n  Що включено: ${(s.features || []).join('; ')}${s.is_popular ? ' [найпопулярніша]' : ''}`).join('\n\n')
-    : '(не вказано)';
-
-  const premisesStr = premises.length
-    ? premises.map(p => `- ${p.title}: ${p.desc}`).join('\n')
-    : '(не вказано)';
-
-  const faqsStr = faqs.length
-    ? faqs.map((f, i) => `${i + 1}. Питання: ${f.q}\n   Відповідь: ${f.a}`).join('\n\n')
-    : '(не вказано)';
-
-  const highlights = (content.about_highlights || []);
-  const highlightsStr = highlights.length ? list(highlights) : '(не вказано)';
-
-  return `Ти — привітний віртуальний помічник дитячого садочка "${brand}" у м. Рівне, Україна. Тебе звати «Помічник ${brand}».
-
-═══════════════ ВСЯ ІНФОРМАЦІЯ ПРО САДОЧОК ═══════════════
-
-КОНТАКТИ:
-- Назва: ${brand}
-- Телефон: ${settings.phone || '—'}
-- Email: ${settings.email || '—'}
-- Адреса: ${settings.address || '—'}
-- Facebook: ${settings.facebook || '—'}
-- Instagram: ${settings.instagram || '—'}
-- YouTube: ${settings.youtube || '—'}
-
-ГОЛОВНА СТОРІНКА:
-- Слоган: «${content.hero_title || ''}»
-- Тег: ${content.hero_badge || ''}
-- Опис: ${content.hero_desc || ''}
-- Досвід: ${content.hero_badge_value || ''} — ${content.hero_badge_label || ''}
-
-ПРО САДОЧОК (${content.about_title || ''}):
-${content.about_desc || ''}
-
-Тези про садочок:
-${highlightsStr}
-
-ПЕРЕВАГИ:
-${aboutCardsStr}
-
-НАПРЯМКИ РОЗВИТКУ (${content.directions_title || ''}):
-${directionsStr}
-
-ПРИМІЩЕННЯ (${content.premises_title || ''}):
-Підзаголовок: ${content.premises_subtitle || ''}
-Опис: ${content.premises_desc || ''}
-
-Окремі приміщення:
-${premisesStr}
-
-ВІКОВІ ГРУПИ (${content.services_title || ''}):
-${servicesStr}
-
-ЧАСТІ ЗАПИТАННЯ ТА ВІДПОВІДІ (FAQ):
-${faqsStr}
-
-═══════════════ ІНСТРУКЦІЇ ДЛЯ ВІДПОВІДЕЙ ═══════════════
-
-1. Відповідай українською мовою, тепло й привітно. Помірно використовуй емодзі (1-3 на відповідь).
-2. ЯКЩО ПИТАННЯ ЗБІГАЄТЬСЯ З FAQ — давай відповідь з FAQ, але переформулюй природно (не цитуй дослівно «питання-відповідь»).
-3. ЯКЩО Є ТОЧНА ІНФОРМАЦІЯ ВИЩЕ — використовуй саме її. Не вигадуй те, чого немає (ціни, графіки, прізвища).
-4. ЯКЩО ІНФОРМАЦІЇ НЕМАЄ — чесно скажи: «На жаль, цією деталлю я не володію. Зателефонуйте за номером ${settings.phone || ''} — там точно допоможуть». Не вигадуй.
-5. Загальні питання про виховання/розвиток дітей — можеш відповідати своїми словами як експерт, але стисло.
-6. Якщо запитують «як записатись» — кажи: «Натисніть кнопку "Заповнити анкету" вгорі сторінки або зателефонуйте ${settings.phone || ''}».
-7. Якщо запитують контакти — давай телефон, email, адресу.
-8. Якщо питання НЕ про садочок / дітей — ввічливо переспрямуй: «Я спеціалізуюсь на питаннях про наш садочок 🌱. Чим можу допомогти стосовно ${brand}?»
-9. Тримай відповідь у межах 2-4 коротких речень, якщо тільки користувач не просить детальніше.
-10. Ніколи не вигадуй ціни, прізвища вихователів, точні години, дати чи факти, яких немає у даних.`;
-};
-
 const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   const settings = siteData.settings || {};
   const brand = `${settings.nav_brand || 'ЗДО'} ${settings.nav_brand_accent || ''}`.trim();
@@ -1861,7 +1772,6 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
-  const activeModelRef = useRef(null);
 
   // Як тільки приходять справжні дані з адмінки — оновлюємо привітання,
   // але тільки якщо користувач ще нічого не писав (щоб не стерти діалог).
@@ -1878,78 +1788,8 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => scrollToBottom(), [messages]);
 
-  // Дістає список моделей через listModels API.
-  // Сортуємо так, щоб free tier-friendly моделі йшли першими:
-  // 1) "lite" (найвища квота на безкоштовному тарифі)
-  // 2) звичайні "flash"
-  // 3) серед однакового типу — новіші версії 2.5 > 2.0 > 1.5
-  // 4) уникаємо моделей які Google переніс на paid only (2.0-flash як основна)
-  const fetchModelCandidates = async (apiKey) => {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      const data = await res.json();
-      if (!data.models?.length) return [];
-
-      const versionOf = (name) => {
-        const m = name.match(/(\d+(?:\.\d+)?)/);
-        return m ? parseFloat(m[1]) : 0;
-      };
-
-      return data.models
-        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-        .filter(m => !/embed|vision|tts|image|audio|live|exp|thinking/i.test(m.name))
-        // 2.0-flash зараз paid-only на більшості free акаунтів → у самий низ
-        .sort((a, b) => {
-          const aLite = /lite/i.test(a.name) ? 2 : 0;
-          const bLite = /lite/i.test(b.name) ? 2 : 0;
-          if (aLite !== bLite) return bLite - aLite;
-
-          const aFlash = /flash/i.test(a.name) ? 1 : 0;
-          const bFlash = /flash/i.test(b.name) ? 1 : 0;
-          if (aFlash !== bFlash) return bFlash - aFlash;
-
-          // Серед однакового типу — новіші версії пріоритетніші, але 2.0 в кінець
-          const va = versionOf(a.name), vb = versionOf(b.name);
-          const isAProblematic = Math.abs(va - 2.0) < 0.01 ? 1 : 0;
-          const isBProblematic = Math.abs(vb - 2.0) < 0.01 ? 1 : 0;
-          if (isAProblematic !== isBProblematic) return isAProblematic - isBProblematic;
-
-          if (va !== vb) return vb - va;
-          const aLatest = /latest/i.test(a.name) ? 1 : 0;
-          const bLatest = /latest/i.test(b.name) ? 1 : 0;
-          return bLatest - aLatest;
-        })
-        .map(m => m.name);
-    } catch (e) {
-      console.warn('listModels failed', e);
-      return [];
-    }
-  };
-
-  // Форматує число секунд із Gemini retry hint у людський вигляд
-  const formatRetryHint = (msg) => {
-    const m = (msg || '').match(/retry in ([\d.]+)s/i);
-    if (!m) return '';
-    const s = Math.ceil(parseFloat(m[1]));
-    return s > 60 ? ` Спробуйте через ${Math.ceil(s / 60)} хв.` : ` Спробуйте через ${s} с.`;
-  };
-
-  const callModel = async (modelName, apiKey, contents, systemInstruction) => {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          generationConfig: { temperature: 0.7, maxOutputTokens: 600 },
-        }),
-      }
-    );
-    return res.json();
-  };
-
+  // Усе спілкування з Gemini проходить через Django-проксі /api/chat/.
+  // API-ключ ніколи не потрапляє у фронт — живе лише в env-змінних бекенду.
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -1959,88 +1799,35 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
     setIsLoading(true);
 
     try {
-      const hardcodedKey = "";
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || hardcodedKey;
-
-      if (!apiKey) {
-        throw new Error("API ключ відсутній. Додайте VITE_GEMINI_API_KEY у .env файл.");
-      }
-
-      const siteContext = buildSiteContext(siteData);
+      // Відсилаємо лише історію без вступного привітання
       const history = newMessages.slice(1).map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.text }],
+        text: m.text,
       }));
 
-      // 1) Якщо вже знаємо робочу модель — пробуємо її першою
-      // 2) Інакше тягнемо список з listModels + статичний fallback
-      let candidates;
-      if (activeModelRef.current) {
-        candidates = [activeModelRef.current];
-      } else {
-        const dynamic = await fetchModelCandidates(apiKey);
-        // Статичний fallback (free tier - friendly priority order)
-        const staticFallback = [
-          'models/gemini-2.5-flash-lite',
-          'models/gemini-2.5-flash',
-          'models/gemini-flash-latest',
-        ];
-        const merged = [...new Set([...dynamic, ...staticFallback])];
-        candidates = merged;
+      const res = await fetch(`${API_BASE}/api/chat/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.text) {
+        setMessages(prev => [...prev, { role: 'model', text: data.text }]);
+        return;
       }
 
-      let lastErr = null;
-      let quotaHint = '';
-
-      for (const model of candidates) {
-        try {
-          const data = await callModel(model, apiKey, history, siteContext);
-
-          if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-            activeModelRef.current = model;
-            setMessages(prev => [...prev, { role: 'model', text: data.candidates[0].content.parts[0].text }]);
-            return;
-          }
-
-          const msg = data.error?.message || '';
-          const status = data.error?.status || '';
-
-          // 1) Модель не існує/застаріла — пробуємо наступну, кеш скидаємо
-          if (/not found|not supported|deprecated|UNAVAILABLE/i.test(msg)) {
-            if (activeModelRef.current === model) activeModelRef.current = null;
-            lastErr = new Error(msg);
-            continue;
-          }
-
-          // 2) Квота вичерпана для ЦІЄЇ моделі (limit: 0 або тимчасовий 429)
-          //    → одразу пробуємо наступну в списку, а останнє «спробуйте через N сек» лишаємо як підказку
-          if (status === 'RESOURCE_EXHAUSTED' || /quota|RESOURCE_EXHAUSTED|exceeded/i.test(msg)) {
-            quotaHint = formatRetryHint(msg) || quotaHint;
-            if (activeModelRef.current === model) activeModelRef.current = null;
-            lastErr = new Error(msg);
-            continue;
-          }
-
-          // Інша помилка — припиняємо пошук
-          throw new Error(msg || 'Неочікувана відповідь від сервера.');
-        } catch (e) {
-          lastErr = e;
-        }
-      }
-
-      // Усі моделі впали → формуємо дружнє повідомлення
-      const errMsg = lastErr?.message || '';
-      let friendlyMsg;
-      if (/quota|RESOURCE_EXHAUSTED|exceeded|limit: 0/i.test(errMsg)) {
-        friendlyMsg = `Безкоштовна квота Gemini вичерпана.${quotaHint || ''} Це обмеження Google для безкоштовного тарифу.`;
-      } else if (/API key|INVALID_ARGUMENT|API_KEY/i.test(errMsg)) {
-        friendlyMsg = 'Не вдалося авторизуватись у Gemini. Перевірте API-ключ.';
-      } else {
-        friendlyMsg = errMsg || 'Жодна модель Gemini не доступна.';
-      }
-      throw new Error(friendlyMsg);
+      // Сервер повернув помилку — складаємо інформативне повідомлення
+      const header = data.error || 'Не вдалося отримати відповідь.';
+      const details = data.details ? `\n\n📋 Деталі: «${data.details}»` : '';
+      const code = data.status ? `\n🔢 Код: ${data.status}` : '';
+      throw new Error(header + details + code);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: `Вибачте, сталася помилка 😔: ${error.message}\n\nСпробуйте пізніше або зателефонуйте: ${settings.phone || ''}` }]);
+      setMessages(prev => [...prev, {
+        role: 'model',
+        text: `Вибачте, сталася помилка 😔\n\n${error.message}\n\n📞 Або зателефонуйте: ${settings.phone || ''}`,
+      }]);
     } finally {
       setIsLoading(false);
     }

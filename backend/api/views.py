@@ -1,6 +1,9 @@
+import os
 import re
+import requests as gemini_http
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework import status as _http_status
 from .models import (
     ContactMessage, SurveyApplication,
     SiteInfo, PageText, FAQItem,
@@ -246,6 +249,230 @@ def _join(v):
     if isinstance(v, list):
         return ", ".join(str(x) for x in v if str(x).strip())
     return str(v or "").strip()
+
+
+# ============================================================================
+#  AI Chat Proxy — фронт нічого не знає про Gemini, ключ живе тут у env var
+# ============================================================================
+
+# Free-tier-friendly моделі. Послідовність: спершу найвища квота, потім fallback.
+# Жодних preview/experimental — вони непостійні.
+GEMINI_MODELS = [
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.5-flash",
+    "models/gemini-flash-latest",
+]
+
+# Якщо помилка від Gemini містить одне з цих слів — пробуємо наступну модель
+_RETRYABLE_PATTERNS = re.compile(
+    r"quota|resource_exhausted|exceeded|limit:\s*0|not[_ ]found|"
+    r"no longer available|not supported|deprecated|unavailable",
+    re.IGNORECASE,
+)
+
+
+def _build_ai_context():
+    """Збирає повний контекст про садочок із БД для системної інструкції."""
+    info = SiteInfo.objects.first()
+    text = PageText.objects.first()
+    if not info or not text:
+        return "Ти — віртуальний помічник дитячого садочка."
+
+    brand = f"{info.nav_brand or ''} {info.nav_brand_accent or ''}".strip() or "садочок"
+
+    lines = [
+        f'Ти — привітний віртуальний помічник дитячого садочка "{brand}" у м. Рівне, Україна.',
+        "",
+        "═══ ВСЯ ІНФОРМАЦІЯ ПРО САДОЧОК ═══",
+        "",
+        "КОНТАКТИ:",
+        f"- Назва: {brand}",
+        f"- Телефон: {info.phone or '—'}",
+        f"- Email: {info.email or '—'}",
+        f"- Адреса: {info.address or '—'}",
+        f"- Facebook: {info.facebook or '—'}",
+        f"- Instagram: {info.instagram or '—'}",
+        f"- Telegram: {info.telegram or '—'}",
+        f"- Threads: {info.threads or '—'}",
+        "",
+        "ГОЛОВНА СТОРІНКА:",
+        f"- Слоган: «{text.hero_title or ''}»",
+        f"- Тег: {text.hero_badge or ''}",
+        f"- Опис: {text.hero_desc or ''}",
+        f"- Досвід: {text.hero_badge_value or ''} — {text.hero_badge_label or ''}",
+        "",
+        f"ПРО САДОЧОК ({text.about_title or ''}):",
+        text.about_desc or "",
+        "",
+    ]
+
+    highlights = [h.strip() for h in (text.about_highlights or "").splitlines() if h.strip()]
+    if highlights:
+        lines.append("Тези про садочок:")
+        for h in highlights:
+            lines.append(f"- {h}")
+        lines.append("")
+
+    cards = AboutCard.objects.all()
+    if cards.exists():
+        lines.append("ПЕРЕВАГИ:")
+        for c in cards:
+            lines.append(f"- {c.title}: {c.text}")
+        lines.append("")
+
+    directions = DirectionCard.objects.all()
+    if directions.exists():
+        lines.append(f"НАПРЯМКИ РОЗВИТКУ ({text.directions_title or ''}):")
+        for d in directions:
+            lines.append(f"- {d.title}: {d.text}")
+        lines.append("")
+
+    services = ServiceGroup.objects.all()
+    if services.exists():
+        lines.append(f"ВІКОВІ ГРУПИ ({text.services_title or ''}):")
+        for s in services:
+            features = [f.strip() for f in (s.features or "").splitlines() if f.strip()]
+            popular = " [найпопулярніша]" if s.is_popular else ""
+            lines.append(f"• {s.title} (вік: {s.age}){popular}")
+            lines.append(f"  {s.desc}")
+            if features:
+                lines.append(f"  Що включено: {'; '.join(features)}")
+        lines.append("")
+
+    if text.premises_title or text.premises_subtitle or text.premises_desc:
+        lines.append(f"ПРИМІЩЕННЯ ({text.premises_title or ''}):")
+        if text.premises_subtitle:
+            lines.append(text.premises_subtitle)
+        if text.premises_desc:
+            lines.append(text.premises_desc)
+        lines.append("")
+
+    faqs = FAQItem.objects.all()
+    if faqs.exists():
+        lines.append("ЧАСТІ ЗАПИТАННЯ ТА ВІДПОВІДІ (FAQ):")
+        for i, f in enumerate(faqs, 1):
+            lines.append(f"{i}. Питання: {f.question}")
+            lines.append(f"   Відповідь: {f.answer}")
+        lines.append("")
+
+    phone = info.phone or ""
+    lines.extend([
+        "═══ ІНСТРУКЦІЇ ═══",
+        "1. Відповідай українською мовою, тепло й привітно. Помірно використовуй емодзі (1-3 на відповідь).",
+        "2. Якщо питання збігається з FAQ — давай відповідь з FAQ, переформулювавши природно.",
+        "3. Якщо є точна інформація вище — використовуй її. Не вигадуй ціни, прізвища, графіки.",
+        f"4. Якщо інформації нема — кажи: «На жаль, цією деталлю я не володію. Зателефонуйте за номером {phone} — там точно допоможуть».",
+        "5. Загальні питання про виховання/розвиток дітей — можеш відповідати як експерт стисло.",
+        f"6. Якщо запитують «як записатись» — кажи: «Натисніть кнопку \"Заповнити анкету\" вгорі сторінки або зателефонуйте {phone}».",
+        "7. Не на тему садочка / дітей — ввічливо переспрямуй.",
+        "8. Тримай відповідь у межах 2-4 коротких речень, якщо тільки користувач не просить детальніше.",
+    ])
+
+    return "\n".join(lines)
+
+
+@api_view(['POST'])
+def submit_chat(request):
+    """Проксі для Gemini. Ключ читається з env GEMINI_API_KEY (НІКОЛИ не з фронта)."""
+    api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+    if not api_key:
+        return Response(
+            {'error': 'AI-помічник тимчасово недоступний (API-ключ не налаштовано на сервері).'},
+            status=_http_status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    data = request.data
+    messages = data.get('messages') or []
+    if not isinstance(messages, list) or not messages:
+        return Response({'error': 'Порожнє повідомлення.'}, status=_http_status.HTTP_400_BAD_REQUEST)
+
+    # Базова перевірка: останнє повідомлення — від користувача
+    if messages[-1].get('role') == 'model':
+        return Response({'error': 'Очікується повідомлення від користувача в кінці історії.'}, status=400)
+
+    # Конвертуємо у формат Gemini
+    contents = []
+    for m in messages:
+        role = 'model' if m.get('role') == 'model' else 'user'
+        text = (m.get('text') or '').strip()
+        if not text:
+            continue
+        contents.append({'role': role, 'parts': [{'text': text}]})
+
+    if not contents:
+        return Response({'error': 'Усі повідомлення порожні.'}, status=400)
+
+    site_context = _build_ai_context()
+    body = {
+        'contents': contents,
+        'systemInstruction': {'parts': [{'text': site_context}]},
+        'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 600},
+    }
+
+    last_error_msg = ''
+    last_error_status = ''
+    last_retry_hint = ''
+    tried = []
+
+    for model in GEMINI_MODELS:
+        tried.append(model)
+        url = f'https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={api_key}'
+        try:
+            r = gemini_http.post(url, json=body, timeout=30)
+            result = r.json()
+        except gemini_http.exceptions.RequestException as e:
+            last_error_msg = str(e)
+            last_error_status = 'NETWORK_ERROR'
+            continue
+        except ValueError:
+            last_error_msg = 'Invalid JSON from Gemini'
+            last_error_status = 'PARSE_ERROR'
+            continue
+
+        # Успіх
+        try:
+            text = result['candidates'][0]['content']['parts'][0]['text']
+            if text:
+                return Response({'text': text, 'model': model})
+        except (KeyError, IndexError, TypeError):
+            pass
+
+        err = result.get('error', {}) if isinstance(result, dict) else {}
+        last_error_msg = err.get('message', 'невідома помилка')
+        last_error_status = err.get('status', '')
+
+        # Витягуємо «retry in X seconds» якщо є
+        m = re.search(r'retry in ([\d.]+)s', last_error_msg, re.IGNORECASE)
+        if m:
+            secs = int(float(m.group(1)))
+            if secs > 60:
+                last_retry_hint = f' Спробуйте через {(secs + 59) // 60} хв.'
+            else:
+                last_retry_hint = f' Спробуйте через {secs} с.'
+
+        # Ретраїмо лише квоту/недоступну модель — інше припиняє пошук
+        if _RETRYABLE_PATTERNS.search(last_error_msg + ' ' + last_error_status):
+            continue
+        break
+
+    # Усі моделі впали — формуємо дружнє повідомлення
+    combined = (last_error_msg + ' ' + last_error_status).lower()
+    if re.search(r'quota|resource_exhausted|exceeded|limit:\s*0', combined):
+        header = f"Безкоштовна квота Gemini вичерпана для всіх моделей.{last_retry_hint}"
+    elif re.search(r'permission_denied|forbidden|api[_ ]?key|invalid_argument', combined):
+        header = "Проблема з API-ключем Gemini на сервері."
+    else:
+        header = "Не вдалося отримати відповідь від AI."
+
+    return Response(
+        {
+            'error': header,
+            'details': last_error_msg,
+            'status': last_error_status,
+            'tried': len(tried),
+        },
+        status=_http_status.HTTP_502_BAD_GATEWAY,
+    )
 
 
 @api_view(['POST'])
