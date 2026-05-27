@@ -1878,8 +1878,12 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => scrollToBottom(), [messages]);
 
-  // Дістає список усіх моделей, що зараз підтримують generateContent.
-  // Сортуємо: «flash» (швидше і дешевше) > вища версія > решта.
+  // Дістає список моделей через listModels API.
+  // Сортуємо так, щоб free tier-friendly моделі йшли першими:
+  // 1) "lite" (найвища квота на безкоштовному тарифі)
+  // 2) звичайні "flash"
+  // 3) серед однакового типу — новіші версії 2.5 > 2.0 > 1.5
+  // 4) уникаємо моделей які Google переніс на paid only (2.0-flash як основна)
   const fetchModelCandidates = async (apiKey) => {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
@@ -1893,14 +1897,24 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
 
       return data.models
         .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-        .filter(m => !/embed|vision|tts|image|audio|live|exp/i.test(m.name))
+        .filter(m => !/embed|vision|tts|image|audio|live|exp|thinking/i.test(m.name))
+        // 2.0-flash зараз paid-only на більшості free акаунтів → у самий низ
         .sort((a, b) => {
+          const aLite = /lite/i.test(a.name) ? 2 : 0;
+          const bLite = /lite/i.test(b.name) ? 2 : 0;
+          if (aLite !== bLite) return bLite - aLite;
+
           const aFlash = /flash/i.test(a.name) ? 1 : 0;
           const bFlash = /flash/i.test(b.name) ? 1 : 0;
           if (aFlash !== bFlash) return bFlash - aFlash;
+
+          // Серед однакового типу — новіші версії пріоритетніші, але 2.0 в кінець
           const va = versionOf(a.name), vb = versionOf(b.name);
+          const isAProblematic = Math.abs(va - 2.0) < 0.01 ? 1 : 0;
+          const isBProblematic = Math.abs(vb - 2.0) < 0.01 ? 1 : 0;
+          if (isAProblematic !== isBProblematic) return isAProblematic - isBProblematic;
+
           if (va !== vb) return vb - va;
-          // Стабільні версії (без -001, -latest суфікса) пріоритетніші
           const aLatest = /latest/i.test(a.name) ? 1 : 0;
           const bLatest = /latest/i.test(b.name) ? 1 : 0;
           return bLatest - aLatest;
@@ -1910,6 +1924,14 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
       console.warn('listModels failed', e);
       return [];
     }
+  };
+
+  // Форматує число секунд із Gemini retry hint у людський вигляд
+  const formatRetryHint = (msg) => {
+    const m = (msg || '').match(/retry in ([\d.]+)s/i);
+    if (!m) return '';
+    const s = Math.ceil(parseFloat(m[1]));
+    return s > 60 ? ` Спробуйте через ${Math.ceil(s / 60)} хв.` : ` Спробуйте через ${s} с.`;
   };
 
   const callModel = async (modelName, apiKey, contents, systemInstruction) => {
@@ -1951,51 +1973,72 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
       }));
 
       // 1) Якщо вже знаємо робочу модель — пробуємо її першою
-      // 2) Інакше тягнемо список зі статичним fallback
+      // 2) Інакше тягнемо список з listModels + статичний fallback
       let candidates;
       if (activeModelRef.current) {
         candidates = [activeModelRef.current];
       } else {
         const dynamic = await fetchModelCandidates(apiKey);
-        candidates = dynamic.length ? dynamic : [
-          'models/gemini-flash-latest',
+        // Статичний fallback (free tier - friendly priority order)
+        const staticFallback = [
+          'models/gemini-2.5-flash-lite',
           'models/gemini-2.5-flash',
-          'models/gemini-2.0-flash',
+          'models/gemini-flash-latest',
         ];
+        const merged = [...new Set([...dynamic, ...staticFallback])];
+        candidates = merged;
       }
 
       let lastErr = null;
+      let quotaHint = '';
+
       for (const model of candidates) {
         try {
           const data = await callModel(model, apiKey, history, siteContext);
 
           if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-            // Запам'ятовуємо робочу модель
             activeModelRef.current = model;
             setMessages(prev => [...prev, { role: 'model', text: data.candidates[0].content.parts[0].text }]);
             return;
           }
 
-          // Якщо «not found» / «not supported» — пробуємо наступну в списку
           const msg = data.error?.message || '';
+          const status = data.error?.status || '';
+
+          // 1) Модель не існує/застаріла — пробуємо наступну, кеш скидаємо
           if (/not found|not supported|deprecated|UNAVAILABLE/i.test(msg)) {
-            // Якщо це була закешована модель — скидаємо й тягнемо новий список
-            if (activeModelRef.current === model) {
-              activeModelRef.current = null;
-              const fresh = await fetchModelCandidates(apiKey);
-              if (fresh.length) candidates.push(...fresh.filter(n => n !== model));
-            }
+            if (activeModelRef.current === model) activeModelRef.current = null;
             lastErr = new Error(msg);
             continue;
           }
-          // Інша помилка — кидаємо одразу
+
+          // 2) Квота вичерпана для ЦІЄЇ моделі (limit: 0 або тимчасовий 429)
+          //    → одразу пробуємо наступну в списку, а останнє «спробуйте через N сек» лишаємо як підказку
+          if (status === 'RESOURCE_EXHAUSTED' || /quota|RESOURCE_EXHAUSTED|exceeded/i.test(msg)) {
+            quotaHint = formatRetryHint(msg) || quotaHint;
+            if (activeModelRef.current === model) activeModelRef.current = null;
+            lastErr = new Error(msg);
+            continue;
+          }
+
+          // Інша помилка — припиняємо пошук
           throw new Error(msg || 'Неочікувана відповідь від сервера.');
         } catch (e) {
           lastErr = e;
         }
       }
 
-      throw lastErr || new Error('Жодна модель Gemini не доступна.');
+      // Усі моделі впали → формуємо дружнє повідомлення
+      const errMsg = lastErr?.message || '';
+      let friendlyMsg;
+      if (/quota|RESOURCE_EXHAUSTED|exceeded|limit: 0/i.test(errMsg)) {
+        friendlyMsg = `Безкоштовна квота Gemini вичерпана.${quotaHint || ''} Це обмеження Google для безкоштовного тарифу.`;
+      } else if (/API key|INVALID_ARGUMENT|API_KEY/i.test(errMsg)) {
+        friendlyMsg = 'Не вдалося авторизуватись у Gemini. Перевірте API-ключ.';
+      } else {
+        friendlyMsg = errMsg || 'Жодна модель Gemini не доступна.';
+      }
+      throw new Error(friendlyMsg);
     } catch (error) {
       setMessages(prev => [...prev, { role: 'model', text: `Вибачте, сталася помилка 😔: ${error.message}\n\nСпробуйте пізніше або зателефонуйте: ${settings.phone || ''}` }]);
     } finally {
