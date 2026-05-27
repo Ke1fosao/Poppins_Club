@@ -35,9 +35,11 @@ backend/templates/index.html
 #  Node / Vite / React
 # =============================================================
 node_modules/
-frontend/dist/
 .vite/
 *.local
+
+# frontend/dist/ — НЕ ігноруємо: збираємо локально (бо PA free не має npm)
+# і пушимо у репо разом з кодом, щоб PA міг просто git pull.
 
 # logs
 npm-debug.log*
@@ -58,6 +60,7 @@ backend/media/*
 # =============================================================
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~

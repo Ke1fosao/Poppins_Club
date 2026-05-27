@@ -8,9 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
+# dist/ навмисно НЕ ігноруємо — потрібен у репо для деплою на PythonAnywhere
+# (PA free tier не має npm, тому збираємо локально й пушимо dist/)
 
 # Editor directories and files
 .vscode/*

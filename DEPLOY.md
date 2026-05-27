@@ -52,44 +52,42 @@ pip install -r requirements.txt
 
 ---
 
-## 4. Збудуйте фронтенд
+## 4. Фронтенд уже зібраний у репозиторії ✓
 
-PythonAnywhere має Node.js на безкоштовному тарифі (трохи старий, але достатній для білда Vite).
+**Важливо:** PythonAnywhere безкоштовний тариф НЕ має `npm`. Тому фронт збираємо локально на своєму ПК (один раз перед деплоєм) і пушимо вже зібраний `frontend/dist/` у репо. На PA просто `git pull` і все.
 
+Якщо ви тільки клонували репо на PA — `dist/` уже там. Переходьте до кроку 5.
+
+### Якщо потрібно перебудувати фронт (зміни в коді)
+
+На своєму локальному ПК:
 ```bash
-# Активуйте virtualenv якщо вилетіли
-workon poppins-env
-
-cd ~/Poppins_Club/frontend
-
-# Встановити залежності (займе 1-2 хвилини)
-npm install
-
-# Білд
+cd frontend
 npm run build
+git add frontend/dist
+git commit -m "rebuild frontend"
+git push
 ```
 
-Якщо `npm install` падає через нестачу пам'яті — спробуйте з прапором:
+А потім на PA:
 ```bash
-NODE_OPTIONS=--max-old-space-size=512 npm install --no-audit --no-fund
+cd ~/Poppins_Club
+git pull
+cp frontend/dist/index.html backend/templates/index.html
+# і потім Reload Web App у PA дашборді
 ```
-
-Після білда в `frontend/dist/` буде:
-- `index.html`
-- `assets/index-XXXX.js`
-- `assets/index-XXXX.css`
 
 ---
 
 ## 5. Скопіюйте `index.html` у Django templates
 
-Django повинен віддавати `index.html` як головну сторінку. Скопіюйте файл у `backend/templates/`:
+Django повинен віддавати `index.html` як головну сторінку:
 
 ```bash
 cp ~/Poppins_Club/frontend/dist/index.html ~/Poppins_Club/backend/templates/index.html
 ```
 
-> Цю команду треба повторювати щоразу, коли ви наново перебудовуєте фронт.
+> Повторюйте цю команду щоразу, коли наново перебудовуєте фронт локально й робите `git pull` на PA.
 
 ---
 
@@ -253,12 +251,8 @@ ke1fosao.pythonanywhere.com
 ### `index.html` показує "Збірка фронтенду відсутня"
 Не виконано крок 5 — копіювання `frontend/dist/index.html` → `backend/templates/index.html`.
 
-### `npm install` падає на free PA
-PA безкоштовний тариф обмежений по CPU/RAM. Спробуйте:
-```bash
-NODE_OPTIONS=--max-old-space-size=512 npm install --no-audit --no-fund --legacy-peer-deps
-```
-Якщо не виходить — зробіть `npm run build` локально, закомітьте `frontend/dist/` у репо (тимчасово прибравши з `.gitignore`), і на PA робіть тільки `git pull` без `npm`.
+### `npm: command not found` на PA
+Це нормально — PA безкоштовний тариф не має Node.js. Збирайте фронт **локально** на своєму ПК і пушите `frontend/dist/` у репо разом з кодом. На PA — тільки `git pull`. У цьому проєкті `dist/` уже не у `.gitignore` і пушиться разом з усім.
 
 ### ШІ-помічник пише "API ключ відсутній"
 `VITE_GEMINI_API_KEY` має бути у `frontend/.env.production` ДО запуску `npm run build`. Якщо змінили — перебудуйте фронт.
