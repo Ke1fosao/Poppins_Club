@@ -2,7 +2,7 @@
 
 Сучасний веб-сайт для приватного дитячого садочка з повноцінною адмін-панеллю керування контентом та інтегрованим ШІ-помічником на базі Google Gemini.
 
-🇺🇦 Built in Ukraine · Designed & Developed by **Kovtunovych Dmytro Valeriiovych**
+🇺🇦 Built in Ukraine · Designed & Developed by **Kovtunovych Dmytro Valeriyovych**
 
 ---
 
@@ -161,4 +161,4 @@ Poppins_Club/
 
 ---
 
-Made with ❤ by **Kovtunovych Dmytro Valeriiovych**
+Made with ❤ by **Kovtunovych Dmytro Valeriyovych**

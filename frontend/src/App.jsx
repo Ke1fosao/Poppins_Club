@@ -384,15 +384,26 @@ const About = ({ content, cards, highlights }) => {
 };
 
 // ============================================================================
-//  Універсальна допоміжна логіка свайпу/драгу для каруселей
+//  Універсальна логіка свайпу/драгу — окремо touch (мобіла) і mouse (десктоп).
+//  Pointer Events на iOS Safari іноді не спрацьовують для touch — тому явні
+//  обробники на touchstart/touchmove/touchend через addEventListener з
+//  { passive: false }, що дозволяє preventDefault на горизонтальному свайпі.
 // ============================================================================
 const useSwipeCarousel = (count, autoMs = 5000) => {
   const [index, setIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const startX = useRef(0);
-  const trackWidth = useRef(0);
   const containerRef = useRef(null);
+
+  // Ref'и для трекінгу — щоб не залежати від замикань у async-обробниках
+  const stateRef = useRef({
+    startX: 0,
+    startY: 0,
+    currentDx: 0,
+    isDragging: false,
+    isHorizontal: false, // визначаємо у перших 10 px руху
+    trackWidth: 1,
+  });
 
   const goTo = useCallback((i) => {
     if (count <= 0) return;
@@ -410,27 +421,111 @@ const useSwipeCarousel = (count, autoMs = 5000) => {
     return () => clearInterval(id);
   }, [count, dragging, autoMs, goTo, index]);
 
-  const onPointerDown = (e) => {
-    if (count <= 1) return;
-    setDragging(true);
-    startX.current = e.clientX;
-    trackWidth.current = containerRef.current?.offsetWidth || 1;
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
-  };
-  const onPointerMove = (e) => {
-    if (!dragging) return;
-    setDragX(e.clientX - startX.current);
-  };
-  const endDrag = () => {
-    if (!dragging) return;
-    const threshold = trackWidth.current * 0.18; // 18% ширини → перехід
-    if (dragX > threshold) prev();
-    else if (dragX < -threshold) next();
+  // Спільна логіка завершення жесту
+  const finalizeDrag = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.isDragging) return;
+    const threshold = s.trackWidth * 0.15;
+    if (s.currentDx > threshold) prev();
+    else if (s.currentDx < -threshold) next();
+    s.isDragging = false;
+    s.isHorizontal = false;
+    s.currentDx = 0;
     setDragX(0);
     setDragging(false);
-  };
+  }, [next, prev]);
 
-  return { index, dragX, dragging, containerRef, onPointerDown, onPointerMove, endDrag, next, prev, goTo };
+  // --- Touch handlers (мобіла) ---
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || count <= 1) return;
+
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      stateRef.current.startX = t.clientX;
+      stateRef.current.startY = t.clientY;
+      stateRef.current.currentDx = 0;
+      stateRef.current.isDragging = true;
+      stateRef.current.isHorizontal = false;
+      stateRef.current.trackWidth = el.offsetWidth || 1;
+      setDragging(true);
+    };
+
+    const onTouchMove = (e) => {
+      const s = stateRef.current;
+      if (!s.isDragging || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - s.startX;
+      const dy = t.clientY - s.startY;
+      const absX = Math.abs(dx), absY = Math.abs(dy);
+
+      // У перші ~10 px визначаємо: горизонталь чи вертикаль
+      if (!s.isHorizontal && absX < 10 && absY < 10) return;
+      if (!s.isHorizontal) {
+        if (absY > absX) {
+          // Користувач скролить сторінку — припиняємо драг
+          s.isDragging = false;
+          s.currentDx = 0;
+          setDragX(0);
+          setDragging(false);
+          return;
+        }
+        s.isHorizontal = true;
+      }
+
+      // Це горизонтальний свайп → блокуємо нативний скрол сторінки
+      if (e.cancelable) e.preventDefault();
+      s.currentDx = dx;
+      setDragX(dx);
+    };
+
+    const onTouchEnd = () => finalizeDrag();
+
+    // passive:false ОБОВ'ЯЗКОВО для preventDefault на touchmove
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [count, finalizeDrag]);
+
+  // --- Mouse handlers (десктоп) ---
+  const onMouseDown = useCallback((e) => {
+    if (count <= 1) return;
+    if (e.button !== 0) return; // тільки ліва кнопка
+    const el = containerRef.current;
+    stateRef.current.startX = e.clientX;
+    stateRef.current.startY = e.clientY;
+    stateRef.current.currentDx = 0;
+    stateRef.current.isDragging = true;
+    stateRef.current.isHorizontal = true; // на миші відразу drag — без визначення напрямку
+    stateRef.current.trackWidth = el?.offsetWidth || 1;
+    setDragging(true);
+
+    const onMove = (ev) => {
+      const s = stateRef.current;
+      if (!s.isDragging) return;
+      const dx = ev.clientX - s.startX;
+      s.currentDx = dx;
+      setDragX(dx);
+    };
+    const onUp = () => {
+      finalizeDrag();
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [count, finalizeDrag]);
+
+  return { index, dragX, dragging, containerRef, onMouseDown, next, prev, goTo };
 };
 
 // ============================================================================
@@ -439,8 +534,7 @@ const useSwipeCarousel = (count, autoMs = 5000) => {
 const Premises = ({ content, slides }) => {
   const safeSlides = slides && slides.length > 0 ? slides : [{ title: "Додайте слайди в адмінці", desc: "", image: "" }];
   const {
-    index, dragX, dragging, containerRef,
-    onPointerDown, onPointerMove, endDrag, goTo,
+    index, dragX, dragging, containerRef, onMouseDown, goTo,
   } = useSwipeCarousel(safeSlides.length, 5000);
 
   const trackStyle = {
@@ -470,12 +564,9 @@ const Premises = ({ content, slides }) => {
         <div className="lg:w-2/3 w-full flex flex-col gap-5">
           <div
             ref={containerRef}
-            className="relative rounded-[2.5rem] shadow-2xl overflow-hidden aspect-video select-none touch-pan-y cursor-grab active:cursor-grabbing bg-teal-700/30"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-            onPointerLeave={endDrag}
+            className="relative rounded-[2.5rem] shadow-2xl overflow-hidden aspect-video select-none cursor-grab active:cursor-grabbing bg-teal-700/30"
+            style={{ touchAction: 'pan-y' }}
+            onMouseDown={onMouseDown}
           >
             <div className="flex h-full will-change-transform" style={trackStyle}>
               {safeSlides.map((slide, idx) => (
@@ -531,8 +622,8 @@ const Premises = ({ content, slides }) => {
 const PhotoCarousel = ({ photos, ratioClass = "aspect-video" }) => {
   const safe = photos && photos.length > 0 ? photos : [];
   const {
-    index, dragX, dragging, containerRef,
-    onPointerDown, onPointerMove, endDrag, next, prev, goTo,
+    index, dragX, dragging, containerRef, onMouseDown,
+    next, prev, goTo,
   } = useSwipeCarousel(safe.length, 6000);
 
   if (safe.length === 0) {
@@ -552,12 +643,9 @@ const PhotoCarousel = ({ photos, ratioClass = "aspect-video" }) => {
   return (
     <div
       ref={containerRef}
-      className={`relative ${ratioClass} w-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-100 select-none touch-pan-y cursor-grab active:cursor-grabbing`}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onPointerLeave={endDrag}
+      className={`relative ${ratioClass} w-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-100 select-none cursor-grab active:cursor-grabbing`}
+      style={{ touchAction: 'pan-y' }}
+      onMouseDown={onMouseDown}
     >
       <div className="flex h-full will-change-transform" style={trackStyle}>
         {safe.map((p, idx) => (
@@ -1085,7 +1173,7 @@ const Footer = ({ settings }) => {
       </div>
       <div className="text-center text-sm text-slate-500 break-words">© {new Date().getFullYear()} {settings.footer_copyright}</div>
       <div className="text-center text-xs text-slate-600 mt-3 break-words">
-        Designed &amp; Developed by <span className="text-slate-300 font-medium">Kovtunovych Dmytro Valeriiovych</span>
+        Designed &amp; Developed by <span className="text-slate-300 font-medium">Kovtunovych Dmytro Valeriyovych</span>
       </div>
     </footer>
   );
@@ -1790,6 +1878,56 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => scrollToBottom(), [messages]);
 
+  // Дістає список усіх моделей, що зараз підтримують generateContent.
+  // Сортуємо: «flash» (швидше і дешевше) > вища версія > решта.
+  const fetchModelCandidates = async (apiKey) => {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      const data = await res.json();
+      if (!data.models?.length) return [];
+
+      const versionOf = (name) => {
+        const m = name.match(/(\d+(?:\.\d+)?)/);
+        return m ? parseFloat(m[1]) : 0;
+      };
+
+      return data.models
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .filter(m => !/embed|vision|tts|image|audio|live|exp/i.test(m.name))
+        .sort((a, b) => {
+          const aFlash = /flash/i.test(a.name) ? 1 : 0;
+          const bFlash = /flash/i.test(b.name) ? 1 : 0;
+          if (aFlash !== bFlash) return bFlash - aFlash;
+          const va = versionOf(a.name), vb = versionOf(b.name);
+          if (va !== vb) return vb - va;
+          // Стабільні версії (без -001, -latest суфікса) пріоритетніші
+          const aLatest = /latest/i.test(a.name) ? 1 : 0;
+          const bLatest = /latest/i.test(b.name) ? 1 : 0;
+          return bLatest - aLatest;
+        })
+        .map(m => m.name);
+    } catch (e) {
+      console.warn('listModels failed', e);
+      return [];
+    }
+  };
+
+  const callModel = async (modelName, apiKey, contents, systemInstruction) => {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: { temperature: 0.7, maxOutputTokens: 600 },
+        }),
+      }
+    );
+    return res.json();
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -1807,48 +1945,57 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
       }
 
       const siteContext = buildSiteContext(siteData);
+      const history = newMessages.slice(1).map(m => ({
+        role: m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.text }],
+      }));
 
-      if (!activeModelRef.current) {
+      // 1) Якщо вже знаємо робочу модель — пробуємо її першою
+      // 2) Інакше тягнемо список зі статичним fallback
+      let candidates;
+      if (activeModelRef.current) {
+        candidates = [activeModelRef.current];
+      } else {
+        const dynamic = await fetchModelCandidates(apiKey);
+        candidates = dynamic.length ? dynamic : [
+          'models/gemini-flash-latest',
+          'models/gemini-2.5-flash',
+          'models/gemini-2.0-flash',
+        ];
+      }
+
+      let lastErr = null;
+      for (const model of candidates) {
         try {
-          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-          const listData = await listRes.json();
-          const validModel = listData.models?.find(m => m.supportedGenerationMethods?.includes('generateContent') && m.name.includes('flash'));
-          activeModelRef.current = validModel ? validModel.name : 'models/gemini-1.5-flash';
-        } catch {
-           activeModelRef.current = 'models/gemini-1.5-flash';
+          const data = await callModel(model, apiKey, history, siteContext);
+
+          if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+            // Запам'ятовуємо робочу модель
+            activeModelRef.current = model;
+            setMessages(prev => [...prev, { role: 'model', text: data.candidates[0].content.parts[0].text }]);
+            return;
+          }
+
+          // Якщо «not found» / «not supported» — пробуємо наступну в списку
+          const msg = data.error?.message || '';
+          if (/not found|not supported|deprecated|UNAVAILABLE/i.test(msg)) {
+            // Якщо це була закешована модель — скидаємо й тягнемо новий список
+            if (activeModelRef.current === model) {
+              activeModelRef.current = null;
+              const fresh = await fetchModelCandidates(apiKey);
+              if (fresh.length) candidates.push(...fresh.filter(n => n !== model));
+            }
+            lastErr = new Error(msg);
+            continue;
+          }
+          // Інша помилка — кидаємо одразу
+          throw new Error(msg || 'Неочікувана відповідь від сервера.');
+        } catch (e) {
+          lastErr = e;
         }
       }
 
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${activeModelRef.current}:generateContent?key=${apiKey}`;
-
-      // Будуємо історію (пропускаємо вступне привітання)
-      const history = newMessages.slice(1).map(m => ({
-        role: m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.text }]
-      }));
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: history,
-          systemInstruction: { parts: [{ text: siteContext }] },
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 600,
-          },
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-        setMessages(prev => [...prev, { role: 'model', text: data.candidates[0].content.parts[0].text }]);
-      } else if (data.error) {
-        throw new Error(data.error.message || 'Помилка API');
-      } else {
-        throw new Error('Неочікувана відповідь від сервера.');
-      }
+      throw lastErr || new Error('Жодна модель Gemini не доступна.');
     } catch (error) {
       setMessages(prev => [...prev, { role: 'model', text: `Вибачте, сталася помилка 😔: ${error.message}\n\nСпробуйте пізніше або зателефонуйте: ${settings.phone || ''}` }]);
     } finally {

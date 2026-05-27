@@ -274,4 +274,4 @@ Web → секція **Log files** → відкрити `Error log` і `Server l
 
 ---
 
-Made with ❤ by Kovtunovych Dmytro Valeriiovych
+Made with ❤ by Kovtunovych Dmytro Valeriyovych
