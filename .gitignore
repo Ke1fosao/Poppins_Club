@@ -1,0 +1,80 @@
+# =============================================================
+#  Python / Django
+# =============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Django
+*.log
+*.pot
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+backend/staticfiles/
+
+# Django templates auto-generated (буде створено при білді)
+backend/templates/index.html
+
+# Environment vars
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+!frontend/.env.production
+
+# =============================================================
+#  Node / Vite / React
+# =============================================================
+node_modules/
+frontend/dist/
+.vite/
+*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =============================================================
+#  Media (uploads)
+# Зберігаємо лише ініціальні логотипи, інші завантаження юзера ігноруємо
+# =============================================================
+backend/media/*
+!backend/media/logo/
+!backend/media/logo/**
+
+# =============================================================
+#  IDE / OS
+# =============================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage / tests
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
+
+# =============================================================
+#  Сборки / артефакти
+# =============================================================
+*.tgz
+*.zip
+*.tar.gz
