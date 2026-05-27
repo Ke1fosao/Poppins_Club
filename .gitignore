@@ -21,8 +21,8 @@ db.sqlite3
 db.sqlite3-journal
 backend/staticfiles/
 
-# Django templates auto-generated (буде створено при білді)
-backend/templates/index.html
+# (історично тут була примітка про auto-generated index.html, але краще
+#  тримати placeholder у репо, щоб папка templates/ точно існувала після clone)
 
 # Environment vars
 .env
