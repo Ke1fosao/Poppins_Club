@@ -37,7 +37,8 @@ class SiteInfo(models.Model):
     map_url = models.TextField("Посилання на карту (тільки URL з src iframe Google Maps, без [ ])", blank=True, default="")
     facebook = models.URLField("Посилання на Facebook", blank=True, default="")
     instagram = models.URLField("Посилання на Instagram", blank=True, default="")
-    youtube = models.URLField("Посилання на YouTube", blank=True, default="")
+    telegram = models.URLField("Посилання на Telegram", blank=True, default="")
+    threads = models.URLField("Посилання на Threads", blank=True, default="")
 
     logo_navbar = models.ImageField("Логотип у шапці", upload_to="logo/", blank=True, null=True,
                                     help_text="Рекомендовано: логотип для світлого фону (з текстом)")

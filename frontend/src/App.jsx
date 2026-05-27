@@ -1037,28 +1037,33 @@ const ContactAndMap = ({ settings, content }) => {
   );
 };
 
+const FacebookIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+  </svg>
+);
+
+const InstagramIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
+  </svg>
+);
+
+const TelegramIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
+  </svg>
+);
+
+const ThreadsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.953 11.142c-.071-.034-.143-.067-.216-.099-.127-2.345-1.408-3.688-3.557-3.701h-.029c-1.285 0-2.354.549-3.014 1.547l1.182.811c.491-.745 1.263-.904 1.833-.904h.019c.708.005 1.243.211 1.59.612.252.292.42.696.501 1.201-.61-.103-1.27-.135-1.975-.094-1.987.115-3.265 1.273-3.179 2.883.044.817.452 1.519 1.149 1.978.59.388 1.349.578 2.138.535 1.042-.057 1.86-.454 2.43-1.181.433-.553.706-1.27.825-2.158.484.292.842.677 1.04 1.139.336.785.355 2.075-.696 3.125-.921.92-2.028 1.318-3.7 1.33-1.857-.014-3.262-.61-4.176-1.769-.857-1.087-1.298-2.658-1.317-4.665.019-2.008.46-3.579 1.317-4.665.914-1.16 2.319-1.755 4.176-1.769 1.872.014 3.31.611 4.273 1.775.471.572.829 1.291 1.07 2.13l1.396-.371c-.291-1.03-.751-1.927-1.377-2.686-1.236-1.495-3.044-2.262-5.357-2.279h-.011c-2.31.016-4.092.79-5.293 2.298C4.624 7.728 4.097 9.5 4.07 11.992l-.001.012.001.011c.027 2.493.554 4.265 1.692 5.713 1.201 1.509 2.983 2.282 5.293 2.298h.011c2.055-.014 3.503-.55 4.696-1.738 1.563-1.563 1.514-3.524.999-4.728-.371-.866-1.043-1.567-1.94-2.027zm-3.715 3.357c-.873.049-1.78-.343-1.823-1.187-.029-.564.394-1.179 1.901-1.265.179-.011.348-.014.502-.014.515 0 .991.044 1.405.135-.131 1.815-1.018 2.282-1.985 2.331z"/>
+  </svg>
+);
+
 const Footer = ({ settings }) => {
-  const YoutubeIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2.5 7.1c.3-1.6 1.6-2.9 3.2-3.1C9.6 3.6 14.4 3.6 18.3 4c1.6.2 2.9 1.5 3.2 3.1.4 2.1.4 4.3 0 6.4-.3 1.6-1.6 2.9-3.2 3.1-3.9.4-8.7.4-12.6 0-1.6-.2-2.9-1.5-3.2-3.1-.4-2.1-.4-4.3 0-6.4z"/>
-      <polygon points="10 15 15 12 10 9 10 15"/>
-    </svg>
-  );
-
-  const FacebookIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
-    </svg>
-  );
-
-  const InstagramIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
-    </svg>
-  );
-
   return (
     <footer className="bg-slate-900 pt-20 pb-10 px-6 text-slate-300">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8 border-b border-slate-800 pb-12 mb-8">
@@ -1072,9 +1077,10 @@ const Footer = ({ settings }) => {
           height="h-14 sm:h-16"
         />
         <div className="flex space-x-3">
-          {settings.facebook && <a href={settings.facebook} target="_blank" rel="noopener noreferrer" className="bg-slate-800 p-3 rounded-xl hover:bg-teal-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><FacebookIcon /></a>}
-          {settings.instagram && <a href={settings.instagram} target="_blank" rel="noopener noreferrer" className="bg-slate-800 p-3 rounded-xl hover:bg-teal-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><InstagramIcon /></a>}
-          {settings.youtube && <a href={settings.youtube} target="_blank" rel="noopener noreferrer" className="bg-slate-800 p-3 rounded-xl hover:bg-rose-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><YoutubeIcon /></a>}
+          {settings.facebook && <a href={settings.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="bg-slate-800 p-3 rounded-xl hover:bg-teal-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><FacebookIcon /></a>}
+          {settings.instagram && <a href={settings.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="bg-slate-800 p-3 rounded-xl hover:bg-rose-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><InstagramIcon /></a>}
+          {settings.telegram && <a href={settings.telegram} target="_blank" rel="noopener noreferrer" aria-label="Telegram" className="bg-slate-800 p-3 rounded-xl hover:bg-sky-500 hover:text-white transition-colors flex items-center justify-center w-12 h-12"><TelegramIcon /></a>}
+          {settings.threads && <a href={settings.threads} target="_blank" rel="noopener noreferrer" aria-label="Threads" className="bg-slate-800 p-3 rounded-xl hover:bg-slate-100 hover:text-slate-900 transition-colors flex items-center justify-center w-12 h-12"><ThreadsIcon /></a>}
         </div>
       </div>
       <div className="text-center text-sm text-slate-500 break-words">© {new Date().getFullYear()} {settings.footer_copyright}</div>
@@ -1931,7 +1937,8 @@ const DEFAULT_DATA = {
     map_url: "",
     facebook: "",
     instagram: "",
-    youtube: "",
+    telegram: "",
+    threads: "",
     logo_navbar: "",
     logo_footer: "",
     nav_brand: "ЗДО",
@@ -2000,6 +2007,24 @@ export default function App() {
       })
       .catch(err => console.error("Бекенд ще не запущено або помилка:", err));
   }, []);
+
+  // Динамічно оновлюємо title вкладки і favicon коли підвантажились налаштування з адмінки
+  useEffect(() => {
+    const brand = `${siteData.settings.nav_brand || ''} ${siteData.settings.nav_brand_accent || ''}`.trim();
+    if (brand) {
+      document.title = `${brand} — Приватний дитячий садочок`;
+    }
+    const logoUrl = siteData.settings.logo_navbar;
+    if (logoUrl) {
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = logoUrl;
+    }
+  }, [siteData.settings.nav_brand, siteData.settings.nav_brand_accent, siteData.settings.logo_navbar]);
 
   const isAnketa = path.startsWith('/anketa');
 

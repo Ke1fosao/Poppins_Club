@@ -1,0 +1,34 @@
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block content %}
+<div style="background: linear-gradient(135deg, #f0fdfa 0%, #fef3c7 100%); padding: 24px 28px; border-radius: 16px; margin-bottom: 24px; border: 1px solid #99f6e4;">
+  <h2 style="margin: 0 0 12px 0; color: #0f766e; font-size: 22px;">👋 Вітаємо в адмін-панелі!</h2>
+  <p style="color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
+    Тут ви можете змінювати <b>весь контент сайту</b> без знання коду — тексти, фото, картки, групи, FAQ.
+    Зміни видно одразу після збереження (відвідувачу треба буде оновити сторінку: <kbd>F5</kbd>).
+  </p>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px;">
+    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #14b8a6;">
+      <div style="font-weight: bold; color: #0f766e; margin-bottom: 4px;">📞 Контакти і логотипи</div>
+      <div style="color: #64748b; font-size: 13px;">Телефон, email, адреса, соцмережі, логотип, текст шапки</div>
+    </div>
+    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #f59e0b;">
+      <div style="font-weight: bold; color: #b45309; margin-bottom: 4px;">📝 Тексти розділів</div>
+      <div style="color: #64748b; font-size: 13px;">Заголовки, описи, бейджі усіх секцій сайту</div>
+    </div>
+    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #ec4899;">
+      <div style="font-weight: bold; color: #be185d; margin-bottom: 4px;">📨 Заявки і повідомлення</div>
+      <div style="color: #64748b; font-size: 13px;">Усі анкети та запити від батьків з сайту</div>
+    </div>
+  </div>
+
+  <div style="margin-top: 16px; padding: 12px 14px; background: rgba(255,255,255,0.7); border-radius: 8px; font-size: 13px; color: #475569;">
+    <b>💡 Підказка:</b> якщо щось випадково змінили — натисніть «Скасувати» внизу або не натискайте «Зберегти».
+    Поля з <span style="color:#dc2626;">*</span> — обов'язкові. У всіх розділах є пояснення (бірюзова смужка) — читайте їх перед редагуванням.
+  </div>
+</div>
+
+{{ block.super }}
+{% endblock %}
