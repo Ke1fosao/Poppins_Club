@@ -3,7 +3,8 @@ import {
   Baby, Heart, Smile, Star, Palette, BookOpen, ChevronDown, ChevronUp,
   Phone, MapPin, Mail, ShieldCheck,
   CheckCircle2, ArrowRight, ArrowLeft, Send, Image as ImageIcon, Clock, Sun,
-  MessageCircle, X, Bot, Loader2, Check, Brain, Leaf, Activity, Menu, Settings
+  MessageCircle, X, Bot, Loader2, Check, Brain, Leaf, Activity, Menu, Settings,
+  Home, HelpCircle, Users, Sparkles
 } from 'lucide-react';
 
 // У prod-білді — завжди relative URL (фронт і бек на одному домені).
@@ -141,69 +142,168 @@ const Navbar = ({ navigate, currentPath, settings }) => {
     ? (scrolled || isMobileMenuOpen ? 'bg-white/95 backdrop-blur-md shadow-sm py-3' : 'bg-transparent py-5')
     : 'bg-white shadow-sm py-3';
 
+  // Закриваємо drawer при ESC + блокуємо скрол body
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setIsMobileMenuOpen(false); };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
+
+  // Пункти меню з іконками (для desktop і drawer)
+  const navItems = [
+    { id: 'home',       label: 'Головна',  Icon: Home },
+    { id: 'about',      label: 'Про нас',  Icon: Smile },
+    { id: 'directions', label: 'Напрямки', Icon: Brain },
+    { id: 'services',   label: 'Групи',    Icon: Users },
+    { id: 'faq',        label: 'Питання',  Icon: HelpCircle },
+  ];
+
   return (
-    <nav className={`fixed top-0 w-full z-40 transition-all duration-300 ${navBg}`}>
-      <div className="max-w-7xl mx-auto px-6 flex justify-between items-center relative gap-4">
-        <div className="cursor-pointer group" onClick={() => isLanding ? scrollToSection('home') : navigate('/')}>
-          <Brand
-            logoUrl={settings.logo_navbar}
-            brand={settings.nav_brand}
-            brandAccent={settings.nav_brand_accent}
-            height="h-10 sm:h-12"
-          />
-        </div>
+    <>
+      <nav className={`fixed top-0 w-full z-40 transition-all duration-300 ${navBg}`}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 flex justify-between items-center relative gap-3">
+          <div className="cursor-pointer group min-w-0" onClick={() => isLanding ? scrollToSection('home') : navigate('/')}>
+            <Brand
+              logoUrl={settings.logo_navbar}
+              brand={settings.nav_brand}
+              brandAccent={settings.nav_brand_accent}
+              height="h-10 sm:h-12"
+            />
+          </div>
 
-        {/* Desktop Menu */}
-        <div className="hidden lg:flex space-x-8 items-center font-semibold text-slate-600">
-          <button onClick={() => scrollToSection('home')} className="hover:text-teal-500 transition-colors">Головна</button>
-          <button onClick={() => scrollToSection('about')} className="hover:text-teal-500 transition-colors">Про нас</button>
-          <button onClick={() => scrollToSection('directions')} className="hover:text-teal-500 transition-colors">Напрямки</button>
-          <button onClick={() => scrollToSection('services')} className="hover:text-teal-500 transition-colors">Групи</button>
-          <button onClick={() => scrollToSection('faq')} className="hover:text-teal-500 transition-colors">Питання</button>
+          {/* Desktop menu з іконками */}
+          <div className="hidden lg:flex space-x-2 items-center font-semibold text-slate-600">
+            {navItems.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => scrollToSection(id)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-teal-50 hover:text-teal-600 transition-colors"
+              >
+                <Icon className="w-4 h-4" />
+                <span>{label}</span>
+              </button>
+            ))}
 
-          <a href={`${API_BASE}/admin/`} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full hover:bg-slate-100 transition-colors group" title="Адмін-панель">
-            <Settings className="w-5 h-5 text-slate-400 group-hover:text-teal-500 group-hover:rotate-90 transition-all duration-300" />
-          </a>
-        </div>
+            <a
+              href={`${API_BASE}/admin/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-1 p-2 rounded-full hover:bg-slate-100 transition-colors group"
+              title="Адмін-панель"
+            >
+              <Settings className="w-5 h-5 text-slate-400 group-hover:text-teal-500 group-hover:rotate-90 transition-all duration-300" />
+            </a>
+          </div>
 
-        <button
-          onClick={() => navigate('/anketa')}
-          className="bg-amber-400 text-amber-950 px-5 py-2.5 rounded-full hover:bg-amber-300 hover:shadow-lg hover:-translate-y-0.5 transition-all font-bold hidden sm:block whitespace-nowrap"
-        >
-          {settings.nav_cta_text}
-        </button>
-
-        <button
-          className="lg:hidden p-2 text-slate-600 hover:text-teal-500 transition-colors"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        >
-          {isMobileMenuOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
-        </button>
-      </div>
-
-      <div className={`lg:hidden absolute top-full left-0 w-full bg-white border-b border-slate-100 shadow-2xl overflow-hidden transition-all duration-300 ease-in-out ${isMobileMenuOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        <div className="flex flex-col px-6 py-4 space-y-2 font-semibold text-slate-600">
-          <button onClick={() => scrollToSection('home')} className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors">Головна</button>
-          <button onClick={() => scrollToSection('about')} className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors">Про нас</button>
-          <button onClick={() => scrollToSection('directions')} className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors">Напрямки</button>
-          <button onClick={() => scrollToSection('services')} className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors">Групи</button>
-          <button onClick={() => scrollToSection('faq')} className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors">Питання</button>
-
-          <a href={`${API_BASE}/admin/`} target="_blank" rel="noopener noreferrer" className="text-left py-3 hover:text-teal-500 border-b border-slate-50 transition-colors flex items-center gap-3">
-            <Settings className="w-5 h-5 text-slate-400" />
-            <span>Адмін-панель</span>
-          </a>
-
+          {/* CTA — лише на desktop (lg+). На мобільному ховаємо щоб не обрізалось */}
           <button
-            onClick={() => { navigate('/anketa'); setIsMobileMenuOpen(false); }}
-            className="bg-amber-400 text-amber-950 px-6 py-4 mt-4 rounded-2xl font-bold w-full text-center hover:bg-amber-500 transition-colors"
+            onClick={() => navigate('/anketa')}
+            className="bg-amber-400 text-amber-950 px-5 py-2.5 rounded-full hover:bg-amber-300 hover:shadow-lg hover:-translate-y-0.5 transition-all font-bold hidden lg:block whitespace-nowrap"
           >
             {settings.nav_cta_text}
           </button>
+
+          {/* Hamburger — лише на мобільному */}
+          <button
+            className="lg:hidden p-2.5 -mr-1 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors active:scale-95"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Відкрити меню"
+          >
+            <Menu className="w-7 h-7" />
+          </button>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Backdrop під drawer (клік для закриття) */}
+      <div
+        className={`lg:hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsMobileMenuOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Drawer з правого боку */}
+      <aside
+        className={`lg:hidden fixed top-0 right-0 h-[100dvh] w-[85vw] max-w-sm bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        aria-hidden={!isMobileMenuOpen}
+      >
+        {/* Шапка drawer */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2 min-w-0">
+            <Brand
+              logoUrl={settings.logo_navbar}
+              brand={settings.nav_brand}
+              brandAccent={settings.nav_brand_accent}
+              height="h-9"
+            />
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="p-2 rounded-xl hover:bg-slate-100 transition-colors active:scale-95"
+            aria-label="Закрити меню"
+          >
+            <X className="w-6 h-6 text-slate-600" />
+          </button>
+        </div>
+
+        {/* Список пунктів */}
+        <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+          {navItems.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => scrollToSection(id)}
+              className="w-full flex items-center gap-3 px-3 py-3.5 rounded-2xl hover:bg-teal-50 active:bg-teal-100 transition-colors text-left group"
+            >
+              <div className="w-10 h-10 bg-teal-50 group-hover:bg-teal-100 rounded-xl flex items-center justify-center shrink-0 transition-colors">
+                <Icon className="w-5 h-5 text-teal-600" />
+              </div>
+              <span className="font-semibold text-slate-700 group-hover:text-teal-700">{label}</span>
+            </button>
+          ))}
+
+          <a
+            href={`${API_BASE}/admin/`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 px-3 py-3.5 rounded-2xl hover:bg-slate-50 active:bg-slate-100 transition-colors text-left group"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+              <Settings className="w-5 h-5 text-slate-500" />
+            </div>
+            <span className="font-semibold text-slate-700">Адмін-панель</span>
+          </a>
+        </div>
+
+        {/* CTA внизу drawer */}
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+          <button
+            onClick={() => { navigate('/anketa'); setIsMobileMenuOpen(false); }}
+            className="w-full bg-amber-400 text-amber-950 px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-amber-500 active:scale-[0.98] transition-all shadow-md"
+          >
+            <Sparkles className="w-5 h-5" />
+            <span className="break-words">{settings.nav_cta_text}</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
+};
+
+// Інлайн-парсер для **bold** у звичайному тексті
+const renderInlineMarkdown = (text, accentClass = 'text-teal-700') => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className={`font-bold ${accentClass}`}>{part.slice(2, -2)}</strong>;
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
 };
 
 const HeroTitle = ({ title, accent }) => {
@@ -245,19 +345,25 @@ const Hero = ({ onOpenChat, content }) => {
 
           <HeroTitle title={content.hero_title} accent={content.hero_title_accent} />
 
-          <div className="max-w-lg mx-auto lg:mx-0 space-y-4">
-            {(content.hero_desc || '').split(/\n+/).map(s => s.trim()).filter(Boolean).map((p, i) => (
-              <p
-                key={i}
-                className={
-                  i === 0
-                    ? "text-lg sm:text-xl text-slate-700 leading-relaxed break-words font-medium"
-                    : "text-base sm:text-lg text-slate-500 leading-relaxed break-words"
-                }
-              >
-                {p}
-              </p>
-            ))}
+          <div className="max-w-xl mx-auto lg:mx-0 w-full space-y-4">
+            {(content.hero_desc || '').split(/\n+/).map(s => s.trim()).filter(Boolean).map((p, i) =>
+              i === 0 ? (
+                // Перший абзац — як "лід-цитата" з вертикальною бірюзовою рисочкою
+                <div key={i} className="relative pl-5 sm:pl-6 py-1 border-l-[3px] border-teal-400">
+                  <p className="text-lg sm:text-xl lg:text-2xl text-slate-800 leading-snug break-words font-semibold">
+                    {renderInlineMarkdown(p, 'text-teal-600')}
+                  </p>
+                </div>
+              ) : (
+                // Решта — звичайний текст, але з bold-підсвічуванням ключових фраз
+                <p
+                  key={i}
+                  className="text-base sm:text-lg text-slate-600 leading-relaxed break-words"
+                >
+                  {renderInlineMarkdown(p, 'text-teal-700')}
+                </p>
+              )
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center lg:justify-start">
@@ -1839,13 +1945,52 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
     setMessages([{ role: 'model', text: greeting }]);
   };
 
+  // Блокуємо скрол body коли чат відкритий на мобільному (щоб не «двіжки» сторінки під ним)
+  useEffect(() => {
+    if (!isOpen) return;
+    const isMobile = window.matchMedia('(max-width: 640px)').matches;
+    if (!isMobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
+
   return (
     <>
-      <button onClick={() => setIsOpen(true)} className={`fixed bottom-6 right-6 w-16 h-16 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-teal-600 transition-all z-40 ${isOpen ? 'scale-0' : 'scale-100'}`}>
-        <MessageCircle className="w-8 h-8" />
+      {/* Плаваюча кнопка для відкриття */}
+      <button
+        onClick={() => setIsOpen(true)}
+        aria-label="Відкрити ШІ-помічника"
+        className={`fixed bottom-6 right-6 w-14 h-14 sm:w-16 sm:h-16 bg-teal-500 text-white rounded-full shadow-2xl shadow-teal-500/30 flex items-center justify-center hover:bg-teal-600 hover:scale-110 active:scale-95 transition-all z-40 ${isOpen ? 'scale-0 pointer-events-none' : 'scale-100'}`}
+      >
+        <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8" />
       </button>
 
-      <div className={`fixed bottom-6 right-6 w-[90vw] sm:w-[400px] h-[600px] max-h-[85vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 z-50 ${isOpen ? 'scale-100' : 'scale-0'}`}>
+      {/* Затемнення під чатом на мобільному */}
+      <div
+        className={`sm:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Сам чат:
+          - на phone: повноекранний, виїжджає знизу
+          - на tablet/desktop: плаваюче віконце 400×600 у правому нижньому куті */}
+      <div
+        className={`fixed z-50 bg-white shadow-2xl flex flex-col overflow-hidden
+          inset-x-0 bottom-0 top-[10dvh] rounded-t-3xl
+          sm:inset-auto sm:bottom-6 sm:right-6 sm:top-auto sm:w-[400px] sm:h-[600px] sm:max-h-[85vh] sm:rounded-3xl
+          origin-bottom sm:origin-bottom-right transition-all duration-300
+          ${isOpen
+            ? 'translate-y-0 opacity-100 sm:scale-100'
+            : 'translate-y-full opacity-0 pointer-events-none sm:translate-y-0 sm:scale-0'}`}
+      >
+        {/* Drag-індикатор зверху (для мобільного — підказка що це панель) */}
+        <div className="sm:hidden flex justify-center pt-2 pb-1">
+          <div className="w-12 h-1.5 rounded-full bg-slate-300"></div>
+        </div>
+
+        {/* Шапка */}
         <div className="bg-teal-500 p-4 flex justify-between items-center text-white">
           <div className="flex items-center gap-3 min-w-0">
             <div className="bg-white/20 p-1.5 rounded-full shrink-0">
@@ -1857,18 +2002,30 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={resetChat} title="Очистити" className="p-1.5 rounded-full hover:bg-white/20 transition-colors">
-              <X className="w-4 h-4 opacity-70" />
+            <button
+              onClick={resetChat}
+              title="Очистити діалог"
+              aria-label="Очистити діалог"
+              className="p-2 rounded-full hover:bg-white/20 active:scale-95 transition-all"
+            >
+              <X className="w-4 h-4 opacity-80" />
             </button>
-            <button onClick={() => setIsOpen(false)} title="Закрити" className="p-1.5 rounded-full hover:bg-white/20 transition-colors">
+            <button
+              onClick={() => setIsOpen(false)}
+              title="Закрити"
+              aria-label="Закрити"
+              className="p-2 rounded-full hover:bg-white/20 active:scale-95 transition-all"
+            >
               <ChevronDown className="w-5 h-5" />
             </button>
           </div>
         </div>
-        <div className="flex-grow p-4 overflow-y-auto bg-slate-50 space-y-3">
+
+        {/* Стрічка повідомлень */}
+        <div className="flex-grow p-4 overflow-y-auto bg-slate-50 space-y-3" style={{ WebkitOverflowScrolling: 'touch' }}>
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm whitespace-pre-wrap break-words shadow-sm ${msg.role === 'user' ? 'bg-amber-400 text-amber-950 rounded-br-md' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'}`}>
+              <div className={`max-w-[88%] p-3.5 rounded-2xl text-[15px] sm:text-sm whitespace-pre-wrap break-words shadow-sm leading-relaxed ${msg.role === 'user' ? 'bg-amber-400 text-amber-950 rounded-br-md' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'}`}>
                 {msg.text}
               </div>
             </div>
@@ -1883,21 +2040,27 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
           )}
           <div ref={messagesEndRef} />
         </div>
-        <div className="p-3 bg-white border-t border-slate-100">
+
+        {/* Інпут — товщий для зручної мобільної взаємодії; pb для safe area */}
+        <div className="p-3 sm:p-3 bg-white border-t border-slate-100 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-full border border-slate-200 focus-within:border-teal-300 focus-within:ring-2 focus-within:ring-teal-100 transition-colors">
             <input
               type="text"
+              inputMode="text"
+              autoComplete="off"
+              autoCorrect="on"
               placeholder="Ваше запитання..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
               disabled={isLoading}
-              className="flex-grow bg-transparent px-3 outline-none text-sm disabled:opacity-50"
+              className="flex-grow bg-transparent px-3 py-1 outline-none text-base sm:text-sm disabled:opacity-50 min-w-0"
             />
             <button
               onClick={handleSend}
               disabled={isLoading || !input.trim()}
-              className="bg-teal-500 hover:bg-teal-600 text-white p-2.5 rounded-full disabled:opacity-50 transition-colors"
+              aria-label="Відправити"
+              className="bg-teal-500 hover:bg-teal-600 text-white p-3 rounded-full disabled:opacity-50 active:scale-95 transition-all shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>
