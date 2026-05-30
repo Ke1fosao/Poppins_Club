@@ -1,0 +1,195 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | The Poppins Club{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+  <a href="{% url 'admin:index' %}" style="display:flex;align-items:center;gap:12px;text-decoration:none;">
+    <span style="font-size:30px;line-height:1;">🌿</span>
+    <span style="display:flex;flex-direction:column;">
+      <strong style="font-size:19px;font-weight:800;color:#fff;letter-spacing:-.3px;">The Poppins&nbsp;Club</strong>
+      <span style="font-size:11px;color:#bef0e6;font-weight:600;letter-spacing:.5px;text-transform:uppercase;">панель керування сайтом</span>
+    </span>
+  </a>
+</div>
+{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+/* =========================================================================
+   ТЕМА АДМІНКИ «The Poppins Club» — палітра й вигляд як на сайті
+   (бірюза teal + золото amber, тепле тло, м'які скруглення)
+   ========================================================================= */
+:root,
+html[data-theme="light"],
+html[data-theme="dark"] {
+  --primary: #14b8a6;
+  --secondary: #0f766e;
+  --accent: #f59e0b;
+  --primary-fg: #ffffff;
+
+  --body-fg: #334155;
+  --body-bg: #FFFDF9;
+  --body-quiet-color: #64748b;
+  --body-loud-color: #0f172a;
+
+  --header-color: #d1fae5;
+  --header-branding-color: #ffffff;
+  --header-bg: #0f766e;
+  --header-link-color: #ffffff;
+
+  --breadcrumbs-fg: #ccfbf1;
+  --breadcrumbs-link-fg: #ffffff;
+  --breadcrumbs-bg: #0d9488;
+
+  --link-fg: #0d9488;
+  --link-hover-color: #0f766e;
+  --link-selected-fg: #0f766e;
+
+  --hairline-color: #ece9e3;
+  --border-color: #e6e2da;
+
+  --button-fg: #ffffff;
+  --button-bg: #14b8a6;
+  --button-hover-bg: #0d9488;
+  --default-button-bg: #0f766e;
+  --default-button-hover-bg: #115e59;
+  --close-button-bg: #94a3b8;
+  --close-button-hover-bg: #64748b;
+  --delete-button-bg: #e11d48;
+  --delete-button-hover-bg: #be123c;
+
+  --object-tools-fg: #78350f;
+  --object-tools-bg: #fbbf24;
+  --object-tools-hover-bg: #f59e0b;
+
+  --selected-row: #fffbeb;
+  --selected-bg: #f0fdfa;
+  --darkened-bg: #f7f5f0;
+
+  --message-success-bg: #d1fae5;
+  --message-warning-bg: #fef3c7;
+  --message-error-bg: #ffe4e6;
+}
+
+/* Force light surfaces even if browser/OS is in dark mode (warm, friendly look) */
+html[data-theme="dark"] body { background: var(--body-bg); color: var(--body-fg); }
+
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+
+/* ---- Шапка ---- */
+#header {
+  background: linear-gradient(100deg, #0f766e 0%, #0d9488 55%, #14b8a6 100%);
+  padding: 14px 40px;
+  box-shadow: 0 4px 18px rgba(15, 118, 110, .25);
+  color: #fff;
+}
+#branding h1 { margin: 0; font-weight: 800; }
+#user-tools { font-size: 12px; color: #d1fae5; }
+#user-tools a { border-bottom-color: rgba(255,255,255,.4); }
+#user-tools a:hover { color: #fff; border-bottom-color: #fff; }
+
+/* ---- Хлібні крихти ---- */
+div.breadcrumbs {
+  background: #0d9488;
+  color: #ccfbf1;
+  padding: 11px 40px;
+  font-weight: 600;
+}
+div.breadcrumbs a:hover { color: #fff; }
+
+/* ---- Модулі / картки ---- */
+.module {
+  border-radius: 16px;
+  border: 1px solid var(--hairline-color);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, .05);
+  overflow: hidden;
+}
+.module h2, .module caption, .inline-group h2 {
+  background: linear-gradient(100deg, #0f766e, #0d9488);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: .2px;
+  padding: 11px 16px;
+}
+.dashboard .module table th { font-weight: 600; }
+
+/* App index list (головна) — рядки моделей */
+.dashboard #content-main .module a { font-weight: 600; }
+.dashboard .module table td a { color: var(--link-fg); }
+
+/* ---- Кнопки ---- */
+.button, input[type=submit], input[type=button], .submit-row input, a.button {
+  border-radius: 10px;
+  font-weight: 700;
+  padding: 9px 16px;
+  transition: background .15s, transform .05s;
+}
+.button:active, input[type=submit]:active { transform: translateY(1px); }
+.object-tools a {
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.object-tools a:hover { color: #78350f; }
+
+/* ---- Поля вводу ---- */
+input[type=text], input[type=password], input[type=email], input[type=url],
+input[type=number], input[type=tel], textarea, select, .vTextField {
+  border-radius: 10px;
+  border: 1px solid #d8d3c8;
+}
+input:focus, textarea:focus, select:focus, .vTextField:focus {
+  border-color: #14b8a6 !important;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, .18);
+}
+
+/* ---- Fieldset / форми ---- */
+fieldset.module { border-radius: 16px; }
+.form-row { padding: 12px 14px; }
+.aligned label { color: #475569; font-weight: 600; }
+.help, .helptext, p.help { color: #64748b; }
+
+/* ---- Таблиці-списки ---- */
+#changelist .results { border-radius: 14px; overflow: hidden; border: 1px solid var(--hairline-color); }
+#changelist table thead th {
+  background: #f0fdfa;
+  color: #0f766e;
+  font-weight: 700;
+}
+#changelist table tbody tr:hover { background: #fffdf4; }
+#changelist-filter { border-radius: 14px; }
+#changelist-filter h2 { background: linear-gradient(100deg,#0f766e,#0d9488); border-radius: 14px 14px 0 0; }
+
+/* Рядок-фільтр зверху */
+#toolbar { border-radius: 12px; }
+#toolbar form #searchbar { border-radius: 10px; padding: 8px 12px; }
+
+/* ---- Пагінація / select ---- */
+.paginator a:link, .paginator a:visited { border-radius: 8px; background: #f0fdfa; color: #0f766e; }
+.paginator .this-page { background: #14b8a6; color: #fff; border-radius: 8px; padding: 2px 8px; }
+
+/* ---- Повідомлення (messages) ---- */
+ul.messagelist li { border-radius: 10px; }
+ul.messagelist li.success { color: #065f46; }
+ul.messagelist li.warning { color: #92400e; }
+
+/* ---- Логін ---- */
+.login #container { border-radius: 18px; box-shadow: 0 12px 40px rgba(15,118,110,.18); overflow: hidden; border: 1px solid #cdeee6; }
+.login #header { border-radius: 0; }
+.login .submit-row input { width: 100%; }
+
+/* ---- Календар/годинник віджети акцент ---- */
+.calendar td.selected a { background: #14b8a6; }
+.calendarbox h2 { background: #0d9488; }
+
+/* ---- Select2 (фільтри-автодоповнення) у бренд-кольори ---- */
+.select2-container--admin-autocomplete .select2-results__option--highlighted[aria-selected] { background: #14b8a6; }
+
+/* Прибрати агресивний верх відступ контенту */
+#content { padding-top: 18px; }
+</style>
+{% endblock %}

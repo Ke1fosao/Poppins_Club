@@ -1,32 +1,93 @@
 {% extends "admin/index.html" %}
-{% load i18n static %}
+{% load i18n static poppins_admin %}
 
 {% block content %}
-<div style="background: linear-gradient(135deg, #f0fdfa 0%, #fef3c7 100%); padding: 24px 28px; border-radius: 16px; margin-bottom: 24px; border: 1px solid #99f6e4;">
-  <h2 style="margin: 0 0 12px 0; color: #0f766e; font-size: 22px;">👋 Вітаємо в адмін-панелі!</h2>
-  <p style="color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-    Тут ви можете змінювати <b>весь контент сайту</b> без знання коду — тексти, фото, картки, групи, FAQ.
-    Зміни видно одразу після збереження (відвідувачу треба буде оновити сторінку: <kbd>F5</kbd>).
-  </p>
+{% poppins_dashboard_stats as stats %}
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px;">
-    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #14b8a6;">
-      <div style="font-weight: bold; color: #0f766e; margin-bottom: 4px;">📞 Контакти і логотипи</div>
-      <div style="color: #64748b; font-size: 13px;">Телефон, email, адреса, соцмережі, логотип, текст шапки</div>
-    </div>
-    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #f59e0b;">
-      <div style="font-weight: bold; color: #b45309; margin-bottom: 4px;">📝 Тексти розділів</div>
-      <div style="color: #64748b; font-size: 13px;">Заголовки, описи, бейджі усіх секцій сайту</div>
-    </div>
-    <div style="background: white; padding: 14px 16px; border-radius: 10px; border-left: 4px solid #ec4899;">
-      <div style="font-weight: bold; color: #be185d; margin-bottom: 4px;">📨 Заявки і повідомлення</div>
-      <div style="color: #64748b; font-size: 13px;">Усі анкети та запити від батьків з сайту</div>
-    </div>
-  </div>
+<style>
+  .pc-wrap { margin-bottom: 26px; }
+  .pc-hero {
+    background: linear-gradient(135deg, #f0fdfa 0%, #fef3c7 100%);
+    padding: 22px 26px; border-radius: 18px; border: 1px solid #99f6e4;
+  }
+  .pc-hero h2 { margin: 0 0 6px 0; color: #0f766e; font-size: 21px; }
+  .pc-hero p { color: #334155; margin: 0; line-height: 1.6; }
+  .pc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-top: 18px; }
+  .pc-card {
+    background: #fff; border-radius: 16px; padding: 16px 18px; text-decoration: none;
+    border: 1px solid #eee7da; box-shadow: 0 2px 10px rgba(15,23,42,.04);
+    display: block; transition: transform .12s, box-shadow .12s;
+  }
+  .pc-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(15,118,110,.12); }
+  .pc-num { font-size: 30px; font-weight: 800; line-height: 1; color: #0f172a; }
+  .pc-label { color: #64748b; font-size: 13px; margin-top: 6px; font-weight: 600; }
+  .pc-card.attn { background: linear-gradient(135deg,#0f766e,#0d9488); border: none; }
+  .pc-card.attn .pc-num, .pc-card.attn .pc-label { color: #fff; }
+  .pc-card.amber .pc-num { color: #b45309; }
 
-  <div style="margin-top: 16px; padding: 12px 14px; background: rgba(255,255,255,0.7); border-radius: 8px; font-size: 13px; color: #475569;">
-    <b>💡 Підказка:</b> якщо щось випадково змінили — натисніть «Скасувати» внизу або не натискайте «Зберегти».
-    Поля з <span style="color:#dc2626;">*</span> — обов'язкові. У всіх розділах є пояснення (бірюзова смужка) — читайте їх перед редагуванням.
+  .pc-recent { background:#fff; border:1px solid #eee7da; border-radius:16px; margin-top:18px; overflow:hidden; }
+  .pc-recent h3 { margin:0; padding:13px 18px; background:linear-gradient(100deg,#0f766e,#0d9488); color:#fff; font-size:15px; }
+  .pc-recent table { width:100%; border-collapse:collapse; }
+  .pc-recent td { padding:11px 18px; border-top:1px solid #f1efe8; font-size:14px; }
+  .pc-recent tr:hover { background:#fffdf4; }
+  .pc-recent a { color:#0d9488; font-weight:700; text-decoration:none; }
+  .pc-empty { padding:18px; color:#94a3b8; }
+  .pc-dot { color:#14b8a6; font-size:15px; }
+
+  .pc-badge { padding:2px 10px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
+  .pc-new { background:#ccfbf1; color:#0f766e; }
+  .pc-in_progress { background:#fef3c7; color:#92400e; }
+  .pc-contacted { background:#dbeafe; color:#1e40af; }
+  .pc-enrolled { background:#dcfce7; color:#166534; }
+  .pc-rejected { background:#ffe4e6; color:#9f1239; }
+  .pc-archived { background:#f1f5f9; color:#475569; }
+</style>
+
+<div class="pc-wrap">
+  <div class="pc-hero">
+    <h2>👋 Вітаємо в панелі керування!</h2>
+    <p>
+      Звідси ви керуєте <b>всім сайтом</b> без коду: тексти, фото, картки, групи, FAQ — а також
+      обробляєте <b>заявки й повідомлення</b> від батьків. Зміни на сайті з'являються після
+      збереження (відвідувачу варто оновити сторінку: <kbd>F5</kbd>).
+    </p>
+
+    <div class="pc-cards">
+      <a class="pc-card attn" href="{% url 'admin:api_surveyapplication_changelist' %}?is_read__exact=0">
+        <div class="pc-num">{{ stats.attention }}</div>
+        <div class="pc-label">🔔 Потребують уваги (нові)</div>
+      </a>
+      <a class="pc-card" href="{% url 'admin:api_surveyapplication_changelist' %}">
+        <div class="pc-num">{{ stats.survey_open }}</div>
+        <div class="pc-label">📋 Заявки в роботі</div>
+      </a>
+      <a class="pc-card amber" href="{% url 'admin:api_surveyapplication_changelist' %}?status__exact=enrolled">
+        <div class="pc-num">{{ stats.survey_enrolled }}</div>
+        <div class="pc-label">🎉 Зараховано</div>
+      </a>
+      <a class="pc-card" href="{% url 'admin:api_contactmessage_changelist' %}?is_read__exact=0">
+        <div class="pc-num">{{ stats.msg_unread }}</div>
+        <div class="pc-label">📨 Нові повідомлення</div>
+      </a>
+    </div>
+
+    {% if stats.recent %}
+    <div class="pc-recent">
+      <h3>🕑 Останні заявки</h3>
+      <table>
+        {% for s in stats.recent %}
+        <tr>
+          <td style="width:18px;">{% if not s.is_read %}<span class="pc-dot" title="Нова">●</span>{% endif %}</td>
+          <td><a href="{% url 'admin:api_surveyapplication_change' s.id %}">{{ s.child_name|default:"—" }}</a>
+              <span style="color:#94a3b8;">· {{ s.parent_name }}</span></td>
+          <td style="color:#475569;">{{ s.phone }}</td>
+          <td><span class="pc-badge pc-{{ s.status }}">{{ s.get_status_display }}</span></td>
+          <td style="color:#94a3b8;white-space:nowrap;">{{ s.created_at|date:"d.m H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
   </div>
 </div>
 

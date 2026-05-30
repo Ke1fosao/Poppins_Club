@@ -1,38 +1,187 @@
+"""
+Моделі бази даних сайту «The Poppins Club».
+
+Структура поділена на три логічні групи:
+
+  ЗВЕРНЕННЯ (те, що приходить від відвідувачів — потребує реакції):
+    • SurveyApplication — заявки з 6-крокової анкети /anketa
+    • ContactMessage    — повідомлення з контактної форми
+
+  КОНТЕНТ (те, що показується на сайті — редагується адміністратором):
+    • SiteInfo, PageText                       — налаштування та тексти (singletons)
+    • AboutCard, DirectionCard, ServiceGroup   — картки секцій
+    • DirectionGalleryImage, DirectionCollageImage, PremiseSlide — фото
+    • FAQItem                                  — питання-відповіді
+
+Обидві групи звернень мають єдиний робочий процес обробки:
+статус (status), позначку «прочитано» (is_read) та нотатки адміністратора
+(admin_notes) — щоб адмінка була не «звалищем даних», а робочим інструментом.
+"""
+
+from django.core.validators import RegexValidator
 from django.db import models
 
 
-# --- Іконки для карток (співпадають з назвами Lucide React на фронті) ---
+# Валідатор телефону: цифри, пробіли та + ( ) - ; від 7 до 25 символів.
+# Не дає ввести літери чи випадковий текст у поле телефону.
+PHONE_VALIDATOR = RegexValidator(
+    regex=r"^[\d\s()+\-]{7,25}$",
+    message="Введіть коректний номер: лише цифри, пробіли та символи + ( ) -. "
+            "Наприклад: +38 (097) 123-45-67",
+)
+
+
+# ---------------------------------------------------------------------------
+#  Спільні довідники
+# ---------------------------------------------------------------------------
+
+# Іконки для карток (співпадають з назвами Lucide React на фронті)
 ICON_CHOICES = [
-    ("ShieldCheck", "Щит (безпека)"),
-    ("Palette", "Палітра (творчість)"),
-    ("Smile", "Усмішка"),
-    ("Heart", "Серце"),
-    ("Star", "Зірка"),
-    ("Brain", "Мозок"),
-    ("Leaf", "Листок"),
-    ("Activity", "Активність"),
-    ("BookOpen", "Книга"),
-    ("Baby", "Малюк"),
-    ("Sun", "Сонце"),
-    ("Clock", "Годинник"),
-    ("CheckCircle2", "Галочка"),
+    ("ShieldCheck", "🛡 Щит (безпека)"),
+    ("Palette", "🎨 Палітра (творчість)"),
+    ("Smile", "🙂 Усмішка"),
+    ("Heart", "❤️ Серце"),
+    ("Star", "⭐ Зірка"),
+    ("Brain", "🧠 Мозок"),
+    ("Leaf", "🍃 Листок"),
+    ("Activity", "📈 Активність"),
+    ("BookOpen", "📖 Книга"),
+    ("Baby", "👶 Малюк"),
+    ("Sun", "☀️ Сонце"),
+    ("Clock", "🕐 Годинник"),
+    ("CheckCircle2", "✅ Галочка"),
 ]
 
-# --- Кольорові схеми (співпадають з Tailwind класами на фронті) ---
+# Кольорові схеми (співпадають з Tailwind-класами на фронті)
 COLOR_CHOICES = [
-    ("teal", "Бірюзовий"),
-    ("amber", "Золотий"),
-    ("rose", "Рожевий"),
-    ("blue", "Синій"),
-    ("green", "Зелений"),
-    ("emerald", "Смарагдовий"),
-    ("slate", "Сірий"),
+    ("teal", "🩵 Бірюзовий"),
+    ("amber", "🟡 Золотий"),
+    ("rose", "🌸 Рожевий"),
+    ("blue", "🔵 Синій"),
+    ("green", "🟢 Зелений"),
+    ("emerald", "💚 Смарагдовий"),
+    ("slate", "⚪ Сірий"),
+]
+
+# Єдиний робочий процес обробки звернень
+REQUEST_STATUS_CHOICES = [
+    ("new", "🆕 Нова"),
+    ("in_progress", "📞 В роботі"),
+    ("contacted", "✅ Зв'язались"),
+    ("enrolled", "🎉 Зараховано"),
+    ("rejected", "🚫 Відмова"),
+    ("archived", "📦 Архів"),
 ]
 
 
+class RequestWorkflowModel(models.Model):
+    """
+    Абстрактна база для звернень (анкети, повідомлення).
+    Дає однаковий робочий процес: статус, «прочитано», нотатки, дати.
+    """
+    status = models.CharField(
+        "Статус обробки", max_length=20,
+        choices=REQUEST_STATUS_CHOICES, default="new", db_index=True,
+        help_text="Де зараз ця заявка у вашому процесі. Змінюйте по мірі роботи.",
+    )
+    is_read = models.BooleanField(
+        "Переглянуто", default=False, db_index=True,
+        help_text="Автоматично стає «так», коли ви відкриваєте заявку.",
+    )
+    admin_notes = models.TextField(
+        "Нотатки адміністратора", blank=True, default="",
+        help_text="Внутрішні нотатки для команди. Відвідувач їх НЕ бачить.",
+    )
+    created_at = models.DateTimeField("Надійшло", auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField("Останнє оновлення", auto_now=True, null=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+
+    @property
+    def is_open(self):
+        """Звернення «в роботі» — ще не закрите (не зараховано/відмова/архів)."""
+        return self.status in ("new", "in_progress", "contacted")
+
+
+# ===========================================================================
+#  ЗВЕРНЕННЯ — Заявки з анкети
+# ===========================================================================
+class SurveyApplication(RequestWorkflowModel):
+    # --- Контакти ---
+    parent_name = models.CharField("Ім'я одного з батьків", max_length=100)
+    child_name = models.CharField("Ім'я дитини", max_length=100)
+    phone = models.CharField("Телефон", max_length=20, db_index=True)
+    email = models.EmailField("Email", blank=True, null=True)
+
+    # --- Крок 1: Про дитину ---
+    ages = models.JSONField(
+        "Вік дитини", default=list, blank=True,
+        help_text="Список обраних вікових діапазонів (може бути кілька — для кількох дітей).",
+    )
+    allergies = models.TextField("Алергії", blank=True, default="")
+    has_formula = models.BooleanField("Є дитяча суміш у раціоні", null=True, blank=True)
+    in_e_queue = models.BooleanField("Зареєстровані в електронній черзі", null=True, blank=True)
+    needs_pediatrist = models.BooleanField("Потрібен періодичний педіатр", null=True, blank=True)
+
+    # --- Крок 2: Графік відвідування ---
+    formats = models.JSONField("Формат перебування", default=list, blank=True)
+    time_slots = models.JSONField("Часові проміжки", default=list, blank=True)
+    days = models.JSONField("Дні тижня", default=list, blank=True)
+
+    # --- Крок 3: Очікування від простору ---
+    expectations = models.JSONField("Що найважливіше", default=list, blank=True)
+    red_flags = models.TextField("«Червоні прапорці»", blank=True, default="")
+
+    # --- Крок 4: Про батьків ---
+    value_in_comm = models.TextField("Найцінніше у комунікації", blank=True, default="")
+    challenges = models.TextField("Виклики у вихованні", blank=True, default="")
+    lectures_interest = models.CharField("Інтерес до лекцій/онлайн-сесій", max_length=50, blank=True, default="")
+    interaction_formats = models.CharField("Бажані формати взаємодії", max_length=200, blank=True, default="")
+    parent_questions = models.TextField("Питання для обговорення", blank=True, default="")
+
+    # --- Крок 5: Про підтримку ---
+    benefits = models.CharField("Поінформованість про пільги", max_length=200, blank=True, default="")
+
+    class Meta:
+        verbose_name = "Заявка з анкети"
+        verbose_name_plural = "Заявки з анкети"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.child_name or '?'} (від {self.parent_name or '?'})"
+
+
+# ===========================================================================
+#  ЗВЕРНЕННЯ — Повідомлення з контактної форми
+# ===========================================================================
+class ContactMessage(RequestWorkflowModel):
+    name = models.CharField("Ім'я", max_length=100)
+    phone = models.CharField("Телефон", max_length=20, db_index=True)
+    message = models.TextField("Повідомлення")
+
+    class Meta:
+        verbose_name = "Повідомлення"
+        verbose_name_plural = "Повідомлення з форми"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.name or '?'} — {self.phone or ''}"
+
+
+# ===========================================================================
+#  КОНТЕНТ — Налаштування та тексти
+# ===========================================================================
 class SiteInfo(models.Model):
-    phone = models.CharField("Телефон", max_length=20, default="+38 (0362) 12-34-56")
-    email = models.EmailField("Email", default="zdo52@ukr.net")
+    phone = models.CharField("Телефон", max_length=25, default="+38 (0362) 12-34-56",
+                             validators=[PHONE_VALIDATOR],
+                             help_text="Показується на сайті та клікається для дзвінка. "
+                                       "Формат: +38 (097) 123-45-67.")
+    email = models.EmailField("Email", default="zdo52@ukr.net",
+                              help_text="Клікається для написання листа.")
     address = models.CharField("Адреса", max_length=200, default="м. Рівне, ЗДО №52")
     map_url = models.TextField("Посилання на карту (тільки URL з src iframe Google Maps, без [ ])", blank=True, default="")
     facebook = models.URLField("Посилання на Facebook", blank=True, default="")
@@ -54,8 +203,8 @@ class SiteInfo(models.Model):
                                         default="Заклад дошкільної освіти №52 м. Рівного. Всі права захищено.")
 
     class Meta:
-        verbose_name = "Налаштування контактів"
-        verbose_name_plural = "1. Контакти та Соцмережі"
+        verbose_name = "Контакти та соцмережі"
+        verbose_name_plural = "Контакти та соцмережі"
 
     def __str__(self):
         return "Головні контакти сайту"
@@ -122,13 +271,16 @@ class PageText(models.Model):
     contact_form_btn = models.CharField("Контакти: Текст кнопки", max_length=50, default="Відправити")
 
     class Meta:
-        verbose_name = "Тексти сторінок"
-        verbose_name_plural = "2. Тексти розділів"
+        verbose_name = "Тексти розділів"
+        verbose_name_plural = "Тексти розділів"
 
     def __str__(self):
         return "Тексти на сайті"
 
 
+# ===========================================================================
+#  КОНТЕНТ — Картки секцій
+# ===========================================================================
 class AboutCard(models.Model):
     title = models.CharField("Заголовок", max_length=100)
     text = models.TextField("Опис")
@@ -138,8 +290,8 @@ class AboutCard(models.Model):
 
     class Meta:
         ordering = ["order", "id"]
-        verbose_name = "Картка 'Про нас'"
-        verbose_name_plural = "3. Про нас - картки (3 шт)"
+        verbose_name = "Картка «Про нас»"
+        verbose_name_plural = "«Про нас» — картки переваг"
 
     def __str__(self):
         return self.title
@@ -161,8 +313,8 @@ class DirectionCard(models.Model):
 
     class Meta:
         ordering = ["group", "order", "id"]
-        verbose_name = "Напрямок"
-        verbose_name_plural = "4. Напрямки розвитку"
+        verbose_name = "Напрямок розвитку"
+        verbose_name_plural = "Напрямки: картки-тези"
 
     def __str__(self):
         return self.title
@@ -176,8 +328,8 @@ class DirectionGalleryImage(models.Model):
 
     class Meta:
         ordering = ["order", "id"]
-        verbose_name = "Фото каруселі (Напрямки - ряд 1)"
-        verbose_name_plural = "4а. Напрямки: фото каруселі (ряд 1)"
+        verbose_name = "Фото каруселі (Напрямки, ряд 1)"
+        verbose_name_plural = "Напрямки: фото каруселі (ряд 1)"
 
     def __str__(self):
         return f"Фото №{self.order}"
@@ -198,8 +350,8 @@ class DirectionCollageImage(models.Model):
 
     class Meta:
         ordering = ["position"]
-        verbose_name = "Фото колажу (Напрямки - ряд 2)"
-        verbose_name_plural = "4б. Напрямки: фото колажу (ряд 2)"
+        verbose_name = "Фото колажу (Напрямки, ряд 2)"
+        verbose_name_plural = "Напрямки: фото колажу (ряд 2)"
 
     def __str__(self):
         return self.get_position_display()
@@ -214,7 +366,7 @@ class PremiseSlide(models.Model):
     class Meta:
         ordering = ["order", "id"]
         verbose_name = "Слайд приміщення"
-        verbose_name_plural = "5. Приміщення - слайди (з фото)"
+        verbose_name_plural = "Приміщення — слайди (з фото)"
 
     def __str__(self):
         return self.title
@@ -236,7 +388,7 @@ class ServiceGroup(models.Model):
     class Meta:
         ordering = ["order", "id"]
         verbose_name = "Вікова група"
-        verbose_name_plural = "6. Вікові групи"
+        verbose_name_plural = "Вікові групи"
 
     def __str__(self):
         return self.title
@@ -250,61 +402,7 @@ class FAQItem(models.Model):
     class Meta:
         ordering = ["order", "id"]
         verbose_name = "Питання (FAQ)"
-        verbose_name_plural = "7. Питання та Відповіді"
+        verbose_name_plural = "Питання та відповіді (FAQ)"
 
     def __str__(self):
         return self.question
-
-
-# --- Старі моделі для Анкет та Повідомлень ---
-
-class ContactMessage(models.Model):
-    name = models.CharField("Ім'я", max_length=100)
-    phone = models.CharField("Телефон", max_length=20)
-    message = models.TextField("Повідомлення")
-    created_at = models.DateTimeField("Дата відправки", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Повідомлення"
-        verbose_name_plural = "Повідомлення з сайту"
-
-
-class SurveyApplication(models.Model):
-    # --- Контакти ---
-    child_name = models.CharField("Ім'я дитини", max_length=100)
-    parent_name = models.CharField("Ім'я одного з батьків", max_length=100)
-    phone = models.CharField("Телефон", max_length=20)
-    email = models.EmailField("Email", blank=True, null=True)
-
-    # --- Крок 1: Про дитину ---
-    age_group = models.CharField("Вік дитини (може бути декілька)", max_length=300, blank=True, default="")
-    allergies = models.TextField("Алергії", blank=True, default="")
-    formula = models.CharField("Чи є у раціоні дитяча суміш", max_length=10, blank=True, default="")
-    e_queue = models.CharField("Електронна черга", max_length=10, blank=True, default="")
-    pediatrist = models.CharField("Потреба у періодичному педіатрі", max_length=10, blank=True, default="")
-
-    # --- Крок 2: Про графік відвідування ---
-    format = models.CharField("Формат перебування (може бути декілька)", max_length=300, blank=True, default="")
-    time_slots = models.CharField("Часові проміжки", max_length=500, blank=True, default="")
-    days = models.CharField("Дні тижня", max_length=200, blank=True, default="")
-
-    # --- Крок 3: Очікування від простору ---
-    expectations = models.CharField("Що найважливіше", max_length=500, blank=True, default="")
-    red_flags = models.TextField("«Червоні прапорці»", blank=True, default="")
-
-    # --- Крок 4: Про вас ---
-    value_in_comm = models.TextField("Найцінніше у комунікації з простором", blank=True, default="")
-    challenges = models.TextField("Виклики у вихованні", blank=True, default="")
-    lectures_interest = models.CharField("Інтерес до лекцій/онлайн-сесій", max_length=50, blank=True, default="")
-    interaction_formats = models.CharField("Бажані формати взаємодії", max_length=200, blank=True, default="")
-    parent_questions = models.TextField("Питання, які хочуть обговорити", blank=True, default="")
-
-    # --- Крок 5: Про підтримку (legacy) ---
-    benefits = models.CharField("Пільги (інформованість)", max_length=200, blank=True, default="")
-
-    created_at = models.DateTimeField("Дата заявки", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Анкета"
-        verbose_name_plural = "Анкети (Заявки)"
-        ordering = ["-created_at"]

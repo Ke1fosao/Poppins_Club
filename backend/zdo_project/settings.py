@@ -29,7 +29,7 @@ CSRF_TRUSTED_ORIGINS = [
 # Apps
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
-    'django.contrib.admin',
+    'api.admin_site.PoppinsAdminConfig',  # кастомний admin-сайт (замінює django.contrib.admin)
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',

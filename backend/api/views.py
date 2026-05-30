@@ -251,6 +251,26 @@ def _join(v):
     return str(v or "").strip()
 
 
+def _as_list(v):
+    """Будь-що → чистий список рядків (для JSON-полів мультивибору)."""
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
+    s = str(v or "").strip()
+    return [s] if s else []
+
+
+def _yn_bool(v):
+    """'Так' → True, 'Ні' → False, порожнє/інше → None."""
+    s = str(v or "").strip().lower()
+    if not s:
+        return None
+    if s.startswith("так"):
+        return True
+    if s.startswith("ні") or s.startswith("нi"):
+        return False
+    return None
+
+
 # ============================================================================
 #  AI Chat Proxy — фронт нічого не знає про Gemini, ключ живе тут у env var
 # ============================================================================
@@ -486,30 +506,30 @@ def submit_survey(request):
         phone=_join(data.get('phone'))[:20],
         email=(data.get('email') or '').strip()[:254] or None,
 
-        # Крок 1
-        age_group=_join(data.get('ages') or data.get('age')),
+        # Крок 1 — про дитину
+        ages=_as_list(data.get('ages') or data.get('age')),
         allergies=_join(data.get('allergies')),
-        formula=_join(data.get('formula'))[:10],
-        e_queue=_join(data.get('eQueue'))[:10],
-        pediatrist=_join(data.get('pediatrist'))[:10],
+        has_formula=_yn_bool(data.get('formula')),
+        in_e_queue=_yn_bool(data.get('eQueue')),
+        needs_pediatrist=_yn_bool(data.get('pediatrist')),
 
-        # Крок 2
-        format=_join(data.get('formats') or data.get('format')),
-        time_slots=_join(data.get('timeSlots')),
-        days=_join(data.get('days')),
+        # Крок 2 — графік
+        formats=_as_list(data.get('formats') or data.get('format')),
+        time_slots=_as_list(data.get('timeSlots')),
+        days=_as_list(data.get('days')),
 
-        # Крок 3
-        expectations=_join(data.get('expectations')),
+        # Крок 3 — очікування
+        expectations=_as_list(data.get('expectations')),
         red_flags=_join(data.get('redFlags')),
 
-        # Крок 4
+        # Крок 4 — про батьків
         value_in_comm=_join(data.get('valueInComm')),
         challenges=_join(data.get('challenges')),
         lectures_interest=_join(data.get('lecturesInterest'))[:50],
         interaction_formats=_join(data.get('interactionFormats'))[:200],
         parent_questions=_join(data.get('parentQuestions')),
 
-        # Крок 5
+        # Крок 5 — підтримка
         benefits=_join(data.get('benefits'))[:200],
     )
     return Response({'status': 'Анкету збережено'})
