@@ -79,15 +79,14 @@ cp frontend/dist/index.html backend/templates/index.html
 
 ---
 
-## 5. Скопіюйте `index.html` у Django templates
+## 5. `index.html` уже на місці ✓
 
-Django повинен віддавати `index.html` як головну сторінку:
+`backend/templates/index.html` тепер **зберігається в репозиторії вже зібраним** (синхронізований
+із `frontend/dist/index.html`). Тому копіювати вручну **НЕ треба** — після `git pull` він уже правильний.
 
-```bash
-cp ~/Poppins_Club/frontend/dist/index.html ~/Poppins_Club/backend/templates/index.html
-```
-
-> Повторюйте цю команду щоразу, коли наново перебудовуєте фронт локально й робите `git pull` на PA.
+> ⚠️ **Не робіть `cp ... templates/index.html` на сервері!** Це створює локальну зміну
+> відстежуваного файлу, через яку наступний `git pull` падає з помилкою
+> *«Your local changes would be overwritten by merge»*. Якщо вже зробили — див. Troubleshooting нижче.
 
 ---
 
@@ -250,29 +249,26 @@ application = get_wsgi_application()
 
 ## 🔄 Як оновлювати сайт пізніше
 
+Фронтенд збираєте **локально** (`npm run build`) і пушите разом із `frontend/dist/` та
+синхронізованим `backend/templates/index.html`. На PA — лише `git pull`:
+
 ```bash
 # Відкрийте PA Bash console:
 workon poppins-env
 cd ~/Poppins_Club
 
-# Підтягнути зміни з GitHub
 git pull
 
-# Якщо змінювали бекенд:
 cd backend
-pip install -r requirements.txt   # якщо додалися залежності
+pip install -r requirements.txt   # лише якщо додалися залежності
 python manage.py migrate          # якщо є нові міграції
-python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput   # лише якщо чіпали Django-статику
 
-# Якщо змінювали фронтенд:
-cd ../frontend
-npm install                       # якщо змінився package.json
-npm run build
-cp dist/index.html ../backend/templates/index.html
-
-# Перезапустити Web App
-# Dashboard → Web → Reload button
+# Перезапустити Web App: Dashboard → Web → Reload
 ```
+
+> ❗ **НЕ виконуйте `cp ... templates/index.html`** — файл уже зібраний у репозиторії.
+> Ручне копіювання ламає наступний `git pull`.
 
 ---
 
@@ -287,8 +283,22 @@ ke1fosao.pythonanywhere.com
 ### Помилка `404 на /admin/static`
 Перевірте, що **Static files mapping** у PA Web дашборді налаштований. Перезапустіть Web App.
 
-### `index.html` показує "Збірка фронтенду відсутня"
-Не виконано крок 5 — копіювання `frontend/dist/index.html` → `backend/templates/index.html`.
+### `git pull` падає: *«Your local changes to backend/templates/index.html would be overwritten»*
+Так буває, якщо колись копіювали `index.html` вручну (`cp`) — створилася локальна зміна
+відстежуваного файлу. Приберіть її та повторіть pull:
+```bash
+cd ~/Poppins_Club
+git checkout -- backend/templates/index.html
+git pull
+cd backend && python manage.py migrate
+# Dashboard → Web → Reload
+```
+Більше `cp` робити не треба — файл приходить уже зібраним із `git pull`.
+
+### Сайт показує стару версію після оновлення
+Майже завжди це означає, що `git pull` **не завершився** (див. помилку вище) — перевірте,
+що `git log -1` показує найновіший коміт. Також зробіть **Reload** у Web-дашборді та
+оновіть сторінку в браузері з `Ctrl+F5` (скидання кешу).
 
 ### `npm: command not found` на PA
 Це нормально — PA безкоштовний тариф не має Node.js. Збирайте фронт **локально** на своєму ПК і пушите `frontend/dist/` у репо разом з кодом. На PA — тільки `git pull`. У цьому проєкті `dist/` уже не у `.gitignore` і пушиться разом з усім.
