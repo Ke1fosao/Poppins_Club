@@ -1,3 +1,48 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================
+   The Poppins Club — глобальні стилі поверх Tailwind
+   ============================================================ */
+
+/* Якоря секцій не ховаються під фіксованим меню при переході */
+section[id] { scroll-margin-top: 96px; }
+
+/* Приємніше виділення тексту у фірмових кольорах */
+::selection { background: #99f6e4; color: #0f766e; }
+
+/* Тонший, ніжніший скролбар (десктоп) */
+@media (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: #5eead4 transparent; }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #99f6e4; border-radius: 999px; border: 2px solid #fffdf9; }
+  *::-webkit-scrollbar-thumb:hover { background: #5eead4; }
+}
+
+/* ===== Анімації появи (анкета, чат, повідомлення) =====
+   Раніше ці класи використовувались, але НЕ були визначені — тепер працюють. */
+@keyframes pc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pc-fade-in-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.animate-fade-in { animation: pc-fade-in .45s ease both; }
+.animate-fade-in-up { animation: pc-fade-in-up .6s cubic-bezier(.22, 1, .36, 1) both; }
+
+/* ===== Плавна поява блоків під час прокрутки ===== */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity .7s ease, transform .7s cubic-bezier(.22, 1, .36, 1);
+  will-change: opacity, transform;
+}
+[data-reveal].reveal-in { opacity: 1; transform: none; }
+
+/* ===== Повага до «зменшеного руху» (доступність) ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-reveal] { opacity: 1 !important; transform: none !important; }
+}

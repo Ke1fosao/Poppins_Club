@@ -167,6 +167,10 @@ _rate_log = {}        # {ip: [timestamps]}
 
 def _rate_limited(ip):
     now = _time.time()
+    # Періодичне прибирання застарілих IP, щоб словник не ріс безмежно
+    if len(_rate_log) > 512:
+        for stale in [k for k, v in _rate_log.items() if all(now - t >= _RL_TTL for t in v)]:
+            _rate_log.pop(stale, None)
     log = [t for t in _rate_log.get(ip, []) if now - t < _RL_TTL]
     if len(log) >= _RL_LIMIT:
         _rate_log[ip] = log
@@ -550,6 +554,25 @@ def submit_chat(request):
 @permission_classes([AllowAny])
 def submit_survey(request):
     data = request.data
+
+    # Захист від спаму: ханіпот (бот заповнить, людина — ні)
+    if (data.get('website') or '').strip():
+        return Response({'status': 'ok'})
+
+    # Захист від спаму: rate-limit по IP
+    ip = _client_ip(request)
+    if ip and _rate_limited(ip):
+        return Response(
+            {'error': 'Забагато спроб. Спробуйте через хвилину.'},
+            status=_http.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    # Мінімальна серверна валідація обовʼязкових контактів
+    if not (data.get('childName') and data.get('parentName') and data.get('phone')):
+        return Response(
+            {'error': 'Заповніть обовʼязкові поля (ім\'я дитини, ім\'я батьків, телефон).'},
+            status=_http.HTTP_400_BAD_REQUEST,
+        )
 
     SurveyApplication.objects.create(
         # Контакти

@@ -153,6 +153,7 @@ const PhoneInput = ({ value, onChange, invalid = false, rounded = 'rounded-xl', 
 const Navbar = ({ navigate, currentPath, settings }) => {
   const [scrolled, setScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeId, setActiveId] = useState('home');
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -203,6 +204,24 @@ const Navbar = ({ navigate, currentPath, settings }) => {
     { id: 'faq',        label: 'Питання',  Icon: HelpCircle },
   ];
 
+  // Scroll-spy: підсвічуємо пункт меню секції, що зараз у полі зору
+  useEffect(() => {
+    if (!isLanding || !('IntersectionObserver' in window)) return;
+    const sections = navItems
+      .map(n => document.getElementById(n.id))
+      .filter(Boolean);
+    if (!sections.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(e => { if (e.isIntersecting) setActiveId(e.target.id); });
+      },
+      { rootMargin: '-45% 0px -50% 0px', threshold: 0 },
+    );
+    sections.forEach(s => io.observe(s));
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLanding]);
+
   return (
     <>
       <nav className={`fixed top-0 w-full z-40 transition-all duration-300 ${navBg}`}>
@@ -218,16 +237,19 @@ const Navbar = ({ navigate, currentPath, settings }) => {
 
           {/* Desktop menu з іконками */}
           <div className="hidden lg:flex space-x-2 items-center font-semibold text-slate-600">
-            {navItems.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                onClick={() => scrollToSection(id)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-teal-50 hover:text-teal-600 transition-colors"
-              >
-                <Icon className="w-4 h-4" />
-                <span>{label}</span>
-              </button>
-            ))}
+            {navItems.map(({ id, label, Icon }) => {
+              const active = isLanding && activeId === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => scrollToSection(id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${active ? 'bg-teal-50 text-teal-600' : 'hover:bg-teal-50 hover:text-teal-600'}`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
 
             <a
               href={`${API_BASE}/admin/`}
@@ -292,18 +314,21 @@ const Navbar = ({ navigate, currentPath, settings }) => {
 
         {/* Список пунктів */}
         <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
-          {navItems.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => scrollToSection(id)}
-              className="w-full flex items-center gap-3 px-3 py-3.5 rounded-2xl hover:bg-teal-50 active:bg-teal-100 transition-colors text-left group"
-            >
-              <div className="w-10 h-10 bg-teal-50 group-hover:bg-teal-100 rounded-xl flex items-center justify-center shrink-0 transition-colors">
-                <Icon className="w-5 h-5 text-teal-600" />
-              </div>
-              <span className="font-semibold text-slate-700 group-hover:text-teal-700">{label}</span>
-            </button>
-          ))}
+          {navItems.map(({ id, label, Icon }) => {
+            const active = isLanding && activeId === id;
+            return (
+              <button
+                key={id}
+                onClick={() => scrollToSection(id)}
+                className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-2xl transition-colors text-left group ${active ? 'bg-teal-50' : 'hover:bg-teal-50 active:bg-teal-100'}`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${active ? 'bg-teal-100' : 'bg-teal-50 group-hover:bg-teal-100'}`}>
+                  <Icon className="w-5 h-5 text-teal-600" />
+                </div>
+                <span className={`font-semibold ${active ? 'text-teal-700' : 'text-slate-700 group-hover:text-teal-700'}`}>{label}</span>
+              </button>
+            );
+          })}
 
           <a
             href={`${API_BASE}/admin/`}
@@ -472,7 +497,7 @@ const About = ({ content, cards, highlights }) => {
 
   return (
     <section id="about" className="py-24 px-6 bg-white">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto" data-reveal>
         <div className="text-center mb-14">
           <h2 className="text-sm font-bold text-teal-500 uppercase tracking-widest mb-3">{content.about_kicker}</h2>
           <h3 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 break-words">
@@ -692,7 +717,7 @@ const Premises = ({ content, slides }) => {
 
   return (
     <section className="py-24 px-6 bg-teal-500 text-white overflow-hidden relative">
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-start gap-12 lg:gap-16 relative z-10">
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-start gap-12 lg:gap-16 relative z-10" data-reveal>
         <div className="lg:w-1/3 text-center lg:text-left min-w-0">
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-6 break-words">{content.premises_title}</h2>
           {content.premises_subtitle && (
@@ -725,6 +750,8 @@ const Premises = ({ content, slides }) => {
                         src={slide.image}
                         alt={slide.title}
                         draggable={false}
+                        loading="lazy"
+                        decoding="async"
                         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                       />
                       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6 text-white">
@@ -802,6 +829,8 @@ const PhotoCarousel = ({ photos, ratioClass = "aspect-video" }) => {
               src={p.url}
               alt={p.alt || `Фото ${idx + 1}`}
               draggable={false}
+              loading="lazy"
+              decoding="async"
               className="absolute inset-0 w-full h-full object-cover pointer-events-none"
             />
           </div>
@@ -857,7 +886,7 @@ const DirectionCollage = ({ photos }) => {
   const Cell = ({ p, label, wrapperClass }) => (
     <div className={`${wrapperClass} relative rounded-[2rem] overflow-hidden shadow-xl`}>
       {p?.url ? (
-        <img src={p.url} alt={p.alt || label} className="absolute inset-0 w-full h-full object-cover" />
+        <img src={p.url} alt={p.alt || label} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
       ) : (
         <Placeholder label={label} className="absolute inset-0 rounded-[2rem]" />
       )}
@@ -911,7 +940,7 @@ const DashedCardContainer = ({ children }) => (
 const Directions = ({ content, first, second, gallery, collage }) => {
   return (
     <section id="directions" className="py-24 px-6 bg-[#FFFDF9]">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto" data-reveal>
         <div className="text-center mb-14">
            <h2 className="text-sm font-bold text-teal-500 uppercase tracking-widest mb-3">{content.directions_kicker}</h2>
            <h3 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 break-words">{content.directions_title}</h3>
@@ -948,7 +977,7 @@ const Directions = ({ content, first, second, gallery, collage }) => {
 const Services = ({ onOpenSurvey, content, services }) => {
   return (
     <section id="services" className="py-24 px-6 bg-white">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto" data-reveal>
         <div className="text-center mb-16">
            <h2 className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-3">{content.services_kicker}</h2>
            <h3 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 break-words">{content.services_title}</h3>
@@ -1019,7 +1048,7 @@ const FAQ = ({ content, faqs }) => {
 
   return (
     <section id="faq" className="py-24 px-6 bg-[#FFFDF9]">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto" data-reveal>
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 text-center mb-12 break-words">{content.faq_title}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           {faqs.map((faq, idx) => (
@@ -1130,7 +1159,7 @@ const ContactAndMap = ({ settings, content }) => {
 
   return (
     <section id="contacts" className="py-24 px-6 bg-slate-100">
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-12 lg:gap-16">
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-12 lg:gap-16" data-reveal>
         <div className="lg:w-1/3 w-full">
           <div className="bg-white border border-slate-200 p-7 sm:p-8 rounded-[2.5rem] shadow-xl">
             <h4 className="text-2xl font-bold text-slate-800 mb-6 break-words">{content.contact_form_title}</h4>
@@ -1152,6 +1181,7 @@ const ContactAndMap = ({ settings, content }) => {
                   name="name"
                   type="text"
                   autoComplete="name"
+                  aria-label="Ваше ім'я"
                   placeholder="Ваше ім'я *"
                   value={form.name}
                   onChange={(e) => updateField('name', e.target.value)}
@@ -1174,6 +1204,7 @@ const ContactAndMap = ({ settings, content }) => {
               <div>
                 <textarea
                   name="message"
+                  aria-label="Ваше запитання"
                   placeholder="Ваше запитання... *"
                   rows="3"
                   value={form.message}
@@ -1964,15 +1995,13 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
         return;
       }
 
-      // Сервер повернув помилку — складаємо інформативне повідомлення
-      const header = data.error || 'Не вдалося отримати відповідь.';
-      const details = data.details ? `\n\n📋 Деталі: «${data.details}»` : '';
-      const code = data.status ? `\n🔢 Код: ${data.status}` : '';
-      throw new Error(header + details + code);
+      // Сервер повернув помилку — показуємо лише дружнє пояснення (без тех. деталей)
+      throw new Error(data.error || 'Не вдалося отримати відповідь.');
     } catch (error) {
+      const phoneLine = settings.phone ? `\n\n📞 Краще зателефонуйте: ${settings.phone}` : '';
       setMessages(prev => [...prev, {
         role: 'model',
-        text: `Вибачте, сталася помилка 😔\n\n${error.message}\n\n📞 Або зателефонуйте: ${settings.phone || ''}`,
+        text: `Вибачте, зараз не вдалося відповісти 😔\n${error.message}${phoneLine}`,
       }]);
     } finally {
       setIsLoading(false);
@@ -2109,6 +2138,27 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
   );
 };
 
+// Плаваюча кнопка «нагору» (зліва, щоб не конфліктувати з кнопкою чату справа)
+const BackToTop = () => {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShow(window.scrollY > 700);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      aria-label="Догори"
+      title="Догори"
+      className={`fixed bottom-6 left-6 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-slate-200 text-slate-600 hover:text-teal-600 hover:border-teal-300 hover:-translate-y-0.5 flex items-center justify-center transition-all ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+    >
+      <ChevronUp className="w-6 h-6" />
+    </button>
+  );
+};
+
 const DEFAULT_DATA = {
   settings: {
     phone: "+38 (0362) 12-34-56",
@@ -2206,6 +2256,51 @@ export default function App() {
     }
   }, [siteData.settings.nav_brand, siteData.settings.nav_brand_accent, siteData.settings.logo_navbar]);
 
+  // SEO: структуровані дані (schema.org) з реальних контактів — для пошуковиків
+  useEffect(() => {
+    const s = siteData.settings || {};
+    const brand = `${s.nav_brand || ''} ${s.nav_brand_accent || ''}`.trim();
+    if (!brand) return;
+    const data = {
+      '@context': 'https://schema.org',
+      '@type': 'Preschool',
+      name: brand,
+      url: typeof window !== 'undefined' ? window.location.origin : undefined,
+      telephone: s.phone || undefined,
+      email: s.email || undefined,
+      address: s.address || undefined,
+      image: s.logo_navbar || undefined,
+      sameAs: [s.facebook, s.instagram, s.telegram, s.threads].filter(Boolean),
+    };
+    let tag = document.getElementById('ld-json');
+    if (!tag) {
+      tag = document.createElement('script');
+      tag.type = 'application/ld+json';
+      tag.id = 'ld-json';
+      document.head.appendChild(tag);
+    }
+    tag.textContent = JSON.stringify(data);
+  }, [siteData.settings]);
+
+  // Плавна поява секцій під час прокрутки (із запобіжником — контент завжди покажеться)
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll('[data-reveal]'));
+    if (!els.length) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) {
+      els.forEach(el => el.classList.add('reveal-in'));
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('reveal-in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -8% 0px' });
+    els.forEach(el => io.observe(el));
+    const failsafe = setTimeout(() => els.forEach(el => el.classList.add('reveal-in')), 1800);
+    return () => { io.disconnect(); clearTimeout(failsafe); };
+  }, [path]);
+
   const isAnketa = path.startsWith('/anketa');
 
   return (
@@ -2235,6 +2330,7 @@ export default function App() {
         </>
       )}
 
+      {!isAnketa && <BackToTop />}
       <AIChatbot isOpen={isChatOpen} setIsOpen={setIsChatOpen} siteData={siteData} />
     </div>
   );
