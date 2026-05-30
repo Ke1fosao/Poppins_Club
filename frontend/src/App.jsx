@@ -110,6 +110,46 @@ const CheckboxOption = ({ label, selected, onClick }) => (
   </button>
 );
 
+// Поле телефону з фіксованим префіксом +380 — користувач вводить лише 9 цифр,
+// які автоматично форматуються. Значення зберігається як "+380XXXXXXXXX" (або "").
+const PhoneInput = ({ value, onChange, invalid = false, rounded = 'rounded-xl', id, name = 'phone' }) => {
+  let rest = (value || '').replace(/\D/g, '');
+  if (rest.startsWith('380')) rest = rest.slice(3);
+  rest = rest.slice(0, 9);
+  const display = [rest.slice(0, 2), rest.slice(2, 5), rest.slice(5, 7), rest.slice(7, 9)]
+    .filter(Boolean)
+    .join(' ');
+  const handle = (e) => {
+    let d = e.target.value.replace(/\D/g, '');
+    if (d.startsWith('380')) d = d.slice(3);
+    d = d.slice(0, 9);
+    onChange(d ? '+380' + d : '');
+  };
+  return (
+    <div
+      className={`flex items-stretch ${rounded} border-2 overflow-hidden transition-colors ${
+        invalid ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-slate-50 focus-within:border-teal-500'
+      }`}
+    >
+      <span className="flex items-center px-3 sm:px-4 font-bold text-slate-500 bg-slate-100 border-r-2 border-slate-200 select-none">
+        +380
+      </span>
+      <input
+        id={id}
+        name={name}
+        type="tel"
+        inputMode="numeric"
+        autoComplete="tel-national"
+        value={display}
+        onChange={handle}
+        placeholder="00 000 00 00"
+        aria-label="Номер телефону"
+        className="flex-1 min-w-0 px-3 sm:px-4 py-4 bg-transparent outline-none text-slate-800"
+      />
+    </div>
+  );
+};
+
 const Navbar = ({ navigate, currentPath, settings }) => {
   const [scrolled, setScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1111,6 +1151,7 @@ const ContactAndMap = ({ settings, content }) => {
                 <input
                   name="name"
                   type="text"
+                  autoComplete="name"
                   placeholder="Ваше ім'я *"
                   value={form.name}
                   onChange={(e) => updateField('name', e.target.value)}
@@ -1121,14 +1162,11 @@ const ContactAndMap = ({ settings, content }) => {
               </div>
 
               <div>
-                <input
-                  name="phone"
-                  type="tel"
-                  placeholder="Номер телефону *"
+                <PhoneInput
                   value={form.phone}
-                  onChange={(e) => updateField('phone', e.target.value)}
-                  className={inputCls('phone')}
-                  maxLength={20}
+                  onChange={(v) => updateField('phone', v)}
+                  invalid={!!fieldErrors.phone}
+                  rounded="rounded-xl"
                 />
                 {fieldErrors.phone && <p className="mt-1 text-xs text-rose-600">{fieldErrors.phone}</p>}
               </div>
@@ -1761,16 +1799,16 @@ const SurveyFlow = ({ navigate, siteData }) => {
             <div className="space-y-5">
               <div>
                 <label className="block font-semibold text-slate-700 mb-2">Ім'я одного з батьків *</label>
-                <input type="text" value={formData.parentName || ''} onChange={e => updateForm('parentName', e.target.value)} className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-teal-500 outline-none transition-colors" />
+                <input type="text" autoComplete="name" value={formData.parentName || ''} onChange={e => updateForm('parentName', e.target.value)} className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-teal-500 outline-none transition-colors" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-2">Номер телефону *</label>
-                  <input type="tel" value={formData.phone || ''} onChange={e => updateForm('phone', e.target.value)} className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-teal-500 outline-none transition-colors" />
+                  <PhoneInput value={formData.phone} onChange={(v) => updateForm('phone', v)} rounded="rounded-2xl" />
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-2">Email</label>
-                  <input type="email" value={formData.email || ''} onChange={e => updateForm('email', e.target.value)} className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-teal-500 outline-none transition-colors" />
+                  <input type="email" autoComplete="email" value={formData.email || ''} onChange={e => updateForm('email', e.target.value)} className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-teal-500 outline-none transition-colors" />
                 </div>
               </div>
               <div>

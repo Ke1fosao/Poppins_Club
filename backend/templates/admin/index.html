@@ -53,20 +53,20 @@
     </p>
 
     <div class="pc-cards">
-      <a class="pc-card attn" href="{% url 'admin:api_surveyapplication_changelist' %}?is_read__exact=0">
-        <div class="pc-num">{{ stats.attention }}</div>
-        <div class="pc-label">🔔 Потребують уваги (нові)</div>
+      <a class="pc-card attn" href="{% url 'admin:api_surveyapplication_changelist' %}?status__exact=new">
+        <div class="pc-num">{{ stats.survey_new }}</div>
+        <div class="pc-label">🆕 Нові заявки</div>
       </a>
-      <a class="pc-card" href="{% url 'admin:api_surveyapplication_changelist' %}">
-        <div class="pc-num">{{ stats.survey_open }}</div>
-        <div class="pc-label">📋 Заявки в роботі</div>
+      <a class="pc-card" href="{% url 'admin:api_surveyapplication_changelist' %}?status__exact=in_progress">
+        <div class="pc-num">{{ stats.survey_in_progress }}</div>
+        <div class="pc-label">📞 Заявки в роботі</div>
       </a>
       <a class="pc-card amber" href="{% url 'admin:api_surveyapplication_changelist' %}?status__exact=enrolled">
         <div class="pc-num">{{ stats.survey_enrolled }}</div>
         <div class="pc-label">🎉 Зараховано</div>
       </a>
-      <a class="pc-card" href="{% url 'admin:api_contactmessage_changelist' %}?is_read__exact=0">
-        <div class="pc-num">{{ stats.msg_unread }}</div>
+      <a class="pc-card" href="{% url 'admin:api_contactmessage_changelist' %}?status__exact=new">
+        <div class="pc-num">{{ stats.msg_new }}</div>
         <div class="pc-label">📨 Нові повідомлення</div>
       </a>
     </div>
@@ -77,7 +77,7 @@
       <table>
         {% for s in stats.recent %}
         <tr>
-          <td style="width:18px;">{% if not s.is_read %}<span class="pc-dot" title="Нова">●</span>{% endif %}</td>
+          <td style="width:18px;">{% if s.status == 'new' %}<span class="pc-dot" title="Нова">●</span>{% endif %}</td>
           <td><a href="{% url 'admin:api_surveyapplication_change' s.id %}">{{ s.child_name|default:"—" }}</a>
               <span style="color:#94a3b8;">· {{ s.parent_name }}</span></td>
           <td style="color:#475569;">{{ s.phone }}</td>

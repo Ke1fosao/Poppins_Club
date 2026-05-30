@@ -169,10 +169,11 @@ class RequestAdminBase(admin.ModelAdmin):
         return super().change_view(request, object_id, form_url, extra_context)
 
     # --- Колонки-індикатори ---
-    @admin.display(description="", ordering="is_read")
+    @admin.display(description="", ordering="status")
     def unread_dot(self, obj):
-        if not obj.is_read:
-            return mark_safe('<span title="Нове, не переглянуте" style="color:#14b8a6;font-size:16px;">●</span>')
+        # «Нове» = статус «Нова» (єдине джерело правди). Зникає, щойно змінено статус.
+        if obj.status == "new":
+            return mark_safe('<span title="Нова — потребує уваги" style="color:#14b8a6;font-size:16px;">●</span>')
         return mark_safe('<span style="color:#e2e8f0;font-size:16px;">○</span>')
 
     @admin.display(description="Статус", ordering="status")

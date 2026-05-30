@@ -1,7 +1,8 @@
 import os
 import re
 import requests as gemini_http
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status as _http_status
 from .models import (
@@ -46,6 +47,8 @@ def _clean_url(url):
 
 
 @api_view(['GET'])
+@authentication_classes([])      # публічний ендпоінт: без сесії/CSRF адмінки
+@permission_classes([AllowAny])
 def get_site_content(request):
     info = SiteInfo.objects.first() or SiteInfo.objects.create()
     text = PageText.objects.first() or PageText.objects.create()
@@ -181,6 +184,8 @@ def _client_ip(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])      # публічна форма: не залежить від логіну в адмінці
+@permission_classes([AllowAny])
 def submit_contact(request):
     data = request.data
 
@@ -391,11 +396,47 @@ def _build_ai_context():
     return "\n".join(lines)
 
 
+def _gemini_keys():
+    """
+    Збирає всі доступні ключі Gemini з env, у порядку пріоритету:
+      • GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, GEMINI_API_KEY_4
+      • GEMINI_API_KEYS — список через кому/пробіл/новий рядок
+    Дублікати прибираються, порядок зберігається.
+    """
+    raw = []
+    for name in ('GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_3', 'GEMINI_API_KEY_4'):
+        v = os.environ.get(name, '').strip()
+        if v:
+            raw.append(v)
+    for v in re.split(r'[,\s]+', os.environ.get('GEMINI_API_KEYS', '')):
+        v = v.strip()
+        if v:
+            raw.append(v)
+    seen, out = set(), []
+    for k in raw:
+        if k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
+# Якщо помилка стосується саме ключа (а не моделі) — варто пробувати наступний КЛЮЧ
+_KEY_LEVEL_ERROR = re.compile(
+    r"quota|resource_exhausted|exceeded|limit:\s*0|"
+    r"permission_denied|forbidden|api[_ ]?key|invalid_argument|unauthenticated|expired",
+    re.IGNORECASE,
+)
+
+
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def submit_chat(request):
-    """Проксі для Gemini. Ключ читається з env GEMINI_API_KEY (НІКОЛИ не з фронта)."""
-    api_key = os.environ.get('GEMINI_API_KEY', '').strip()
-    if not api_key:
+    """Проксі для Gemini. Ключі читаються з env (НІКОЛИ не з фронта).
+    Підтримує кілька ключів: якщо один вичерпав квоту / недійсний — автоматично
+    перемикається на наступний. Для кожного ключа перебираються моделі."""
+    keys = _gemini_keys()
+    if not keys:
         return Response(
             {'error': 'AI-помічник тимчасово недоступний (API-ключ не налаштовано на сервері).'},
             status=_http_status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -432,55 +473,63 @@ def submit_chat(request):
     last_error_msg = ''
     last_error_status = ''
     last_retry_hint = ''
-    tried = []
+    tried = 0
 
-    for model in GEMINI_MODELS:
-        tried.append(model)
-        url = f'https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={api_key}'
-        try:
-            r = gemini_http.post(url, json=body, timeout=30)
-            result = r.json()
-        except gemini_http.exceptions.RequestException as e:
-            last_error_msg = str(e)
-            last_error_status = 'NETWORK_ERROR'
+    # Зовнішній цикл — ключі; внутрішній — моделі. Перший успіх повертає відповідь.
+    for key in keys:
+        for model in GEMINI_MODELS:
+            tried += 1
+            url = f'https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={key}'
+            try:
+                r = gemini_http.post(url, json=body, timeout=30)
+                result = r.json()
+            except gemini_http.exceptions.RequestException as e:
+                last_error_msg = str(e)
+                last_error_status = 'NETWORK_ERROR'
+                continue
+            except ValueError:
+                last_error_msg = 'Invalid JSON from Gemini'
+                last_error_status = 'PARSE_ERROR'
+                continue
+
+            # Успіх
+            try:
+                text = result['candidates'][0]['content']['parts'][0]['text']
+                if text:
+                    return Response({'text': text, 'model': model})
+            except (KeyError, IndexError, TypeError):
+                pass
+
+            err = result.get('error', {}) if isinstance(result, dict) else {}
+            last_error_msg = err.get('message', 'невідома помилка')
+            last_error_status = err.get('status', '')
+
+            # Витягуємо «retry in X seconds» якщо є
+            m = re.search(r'retry in ([\d.]+)s', last_error_msg, re.IGNORECASE)
+            if m:
+                secs = int(float(m.group(1)))
+                if secs > 60:
+                    last_retry_hint = f' Спробуйте через {(secs + 59) // 60} хв.'
+                else:
+                    last_retry_hint = f' Спробуйте через {secs} с.'
+
+            combined = last_error_msg + ' ' + last_error_status
+            # Проблема рівня КЛЮЧА (квота/доступ) → припиняємо цей ключ, пробуємо наступний
+            if _KEY_LEVEL_ERROR.search(combined):
+                break
+            # Модель недоступна/не знайдена → пробуємо наступну модель цього ключа
+            if _RETRYABLE_PATTERNS.search(combined):
+                continue
+            # Інша помилка → теж пробуємо далі (наступну модель/ключ), не валимось одразу
             continue
-        except ValueError:
-            last_error_msg = 'Invalid JSON from Gemini'
-            last_error_status = 'PARSE_ERROR'
-            continue
 
-        # Успіх
-        try:
-            text = result['candidates'][0]['content']['parts'][0]['text']
-            if text:
-                return Response({'text': text, 'model': model})
-        except (KeyError, IndexError, TypeError):
-            pass
-
-        err = result.get('error', {}) if isinstance(result, dict) else {}
-        last_error_msg = err.get('message', 'невідома помилка')
-        last_error_status = err.get('status', '')
-
-        # Витягуємо «retry in X seconds» якщо є
-        m = re.search(r'retry in ([\d.]+)s', last_error_msg, re.IGNORECASE)
-        if m:
-            secs = int(float(m.group(1)))
-            if secs > 60:
-                last_retry_hint = f' Спробуйте через {(secs + 59) // 60} хв.'
-            else:
-                last_retry_hint = f' Спробуйте через {secs} с.'
-
-        # Ретраїмо лише квоту/недоступну модель — інше припиняє пошук
-        if _RETRYABLE_PATTERNS.search(last_error_msg + ' ' + last_error_status):
-            continue
-        break
-
-    # Усі моделі впали — формуємо дружнє повідомлення
+    # Усі ключі й моделі впали — формуємо дружнє повідомлення
     combined = (last_error_msg + ' ' + last_error_status).lower()
+    plural = "ключів" if len(keys) > 1 else "ключа"
     if re.search(r'quota|resource_exhausted|exceeded|limit:\s*0', combined):
-        header = f"Безкоштовна квота Gemini вичерпана для всіх моделей.{last_retry_hint}"
-    elif re.search(r'permission_denied|forbidden|api[_ ]?key|invalid_argument', combined):
-        header = "Проблема з API-ключем Gemini на сервері."
+        header = f"Безкоштовна квота Gemini вичерпана для всіх {plural} і моделей.{last_retry_hint}"
+    elif re.search(r'permission_denied|forbidden|api[_ ]?key|invalid_argument|unauthenticated|expired', combined):
+        header = "Проблема з API-ключем(ами) Gemini на сервері."
     else:
         header = "Не вдалося отримати відповідь від AI."
 
@@ -489,13 +538,16 @@ def submit_chat(request):
             'error': header,
             'details': last_error_msg,
             'status': last_error_status,
-            'tried': len(tried),
+            'tried': tried,
+            'keys': len(keys),
         },
         status=_http_status.HTTP_502_BAD_GATEWAY,
     )
 
 
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def submit_survey(request):
     data = request.data
 

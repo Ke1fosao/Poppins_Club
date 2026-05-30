@@ -7,6 +7,28 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+# ---------------------------------------------------------------------------
+# .env loader (без зовнішніх залежностей)
+# Читає backend/.env у форматі KEY=VALUE і кладе у os.environ (не перезаписує
+# вже наявні змінні). Працює і локально, і на PythonAnywhere — достатньо
+# покласти файл .env поруч із manage.py. Файл .env у git НЕ потрапляє.
+# ---------------------------------------------------------------------------
+def _load_dotenv(path):
+    try:
+        with open(path, encoding='utf-8') as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+    except FileNotFoundError:
+        pass
+
+
+_load_dotenv(BASE_DIR / '.env')
+
 # ---------------------------------------------------------------------------
 # Security / Env
 # ---------------------------------------------------------------------------
