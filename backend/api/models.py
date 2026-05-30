@@ -91,6 +91,12 @@ REQUEST_STATUS_CHOICES = [
     ("archived", "📦 Архів"),
 ]
 
+# Звідки надійшло звернення
+SOURCE_CHOICES = [
+    ("site", "🌐 Сайт"),
+    ("telegram", "✈️ Telegram"),
+]
+
 
 class RequestWorkflowModel(models.Model):
     """
@@ -109,6 +115,14 @@ class RequestWorkflowModel(models.Model):
     admin_notes = models.TextField(
         "Нотатки адміністратора", blank=True, default="",
         help_text="Внутрішні нотатки для команди. Відвідувач їх НЕ бачить.",
+    )
+    source = models.CharField(
+        "Джерело", max_length=20, choices=SOURCE_CHOICES, default="site", db_index=True,
+        help_text="Звідки надійшло звернення.",
+    )
+    handled_by = models.CharField(
+        "Опрацьовує", max_length=150, blank=True, default="",
+        help_text="Хто з адміністраторів останнім змінив статус (зокрема з Telegram).",
     )
     created_at = models.DateTimeField("Надійшло", auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField("Останнє оновлення", auto_now=True, null=True)
@@ -453,7 +467,15 @@ class Testimonial(ImageOptimizedModel):
     rating = models.PositiveSmallIntegerField(
         "Оцінка", default=5, choices=[(i, "★" * i) for i in range(1, 6)],
     )
-    is_published = models.BooleanField("Опубліковано на сайті", default=True)
+    is_published = models.BooleanField(
+        "Опубліковано на сайті", default=True,
+        help_text="Відгуки з Telegram надходять неопублікованими — спочатку модерація.",
+    )
+    source = models.CharField("Джерело", max_length=20, choices=SOURCE_CHOICES, default="site")
+    author_contact = models.CharField(
+        "Контакт автора", max_length=150, blank=True, default="",
+        help_text="Телефон / @username автора (для відгуків із Telegram).",
+    )
     order = models.PositiveIntegerField("Порядок", default=0)
 
     class Meta:
@@ -467,18 +489,36 @@ class Testimonial(ImageOptimizedModel):
 
 class TelegramSubscriber(models.Model):
     """
-    Хто отримує сповіщення про нові заявки в Telegram.
-    Запис створюється автоматично, коли адміністратор надсилає боту /start.
+    Користувач Telegram-бота. Створюється автоматично при /start.
+    • Звичайний користувач (батьки) — може ставити запитання й лишати відгуки.
+    • Адміністратор (is_admin=True, дозвіл надається ТУТ, в адмінці) — отримує
+      сповіщення про звернення та може керувати ними прямо з Telegram.
     """
     chat_id = models.CharField("Chat ID", max_length=32, unique=True)
     name = models.CharField("Ім'я у Telegram", max_length=150, blank=True, default="")
-    is_active = models.BooleanField("Отримує сповіщення", default=True)
-    created_at = models.DateTimeField("Підписався", auto_now_add=True)
+    username = models.CharField("@username", max_length=150, blank=True, default="")
+    phone = models.CharField("Телефон (поділився в боті)", max_length=32, blank=True, default="")
+
+    is_admin = models.BooleanField(
+        "Адміністратор (повний доступ)", default=False, db_index=True,
+        help_text="Увімкніть, щоб надати цій людині права адміністратора в боті: "
+                  "сповіщення про звернення та керування ними. Людина має спершу "
+                  "написати боту /start (тоді тут з'явиться її запис).",
+    )
+    is_active = models.BooleanField("Отримує сповіщення", default=True,
+                                    help_text="Для адміністраторів: чи слати сповіщення.")
+
+    # Стан діалогу (для покрокових сценаріїв: запитання, відгук)
+    state = models.CharField(max_length=30, default="idle", blank=True)
+    state_data = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField("Перша взаємодія", auto_now_add=True)
 
     class Meta:
-        ordering = ["-created_at"]
-        verbose_name = "Telegram-підписник"
-        verbose_name_plural = "Telegram-сповіщення"
+        ordering = ["-is_admin", "-created_at"]
+        verbose_name = "Користувач Telegram"
+        verbose_name_plural = "Telegram: користувачі та права"
 
     def __str__(self):
-        return self.name or self.chat_id
+        who = self.name or self.username or self.chat_id
+        return f"{who} {'(адмін)' if self.is_admin else ''}".strip()

@@ -180,6 +180,12 @@ class RequestAdminBase(admin.ModelAdmin):
     def status_badge(self, obj):
         return _status_badge(obj)
 
+    @admin.display(description="Джерело", ordering="source")
+    def source_badge(self, obj):
+        if obj.source == "telegram":
+            return mark_safe('<span title="З Telegram" style="color:#0088cc;font-weight:600;">✈️ Telegram</span>')
+        return mark_safe('<span title="З сайту" style="color:#0f766e;">🌐 Сайт</span>')
+
     # --- Масові дії ---
     def _bulk(self, request, queryset, status, label):
         n = queryset.update(status=status)
@@ -222,8 +228,9 @@ class RequestAdminBase(admin.ModelAdmin):
 @admin.register(SurveyApplication)
 class SurveyApplicationAdmin(RequestAdminBase):
     list_display = ("unread_dot", "child_name", "parent_name", "phone",
-                    "ages_short", "status", "created_at")
+                    "ages_short", "source_badge", "status", "handled_by", "created_at")
     list_display_links = ("child_name",)
+    list_filter = ("status", "is_read", "source", "created_at")
     search_fields = ("child_name", "parent_name", "phone", "email")
     ordering = ("-created_at",)
 
@@ -251,11 +258,13 @@ class SurveyApplicationAdmin(RequestAdminBase):
         ("Формат взаємодії", lambda o: o.interaction_formats or ""),
         ("Питання батьків", lambda o: o.parent_questions or ""),
         ("Пільги", lambda o: o.benefits or ""),
+        ("Джерело", lambda o: o.get_source_display()),
+        ("Опрацьовує", lambda o: o.handled_by or ""),
         ("Нотатки адміністратора", lambda o: o.admin_notes or ""),
     )
 
     readonly_fields = (
-        "summary_card", "created_at", "updated_at",
+        "summary_card", "created_at", "updated_at", "source", "handled_by",
         "parent_name", "child_name", "phone", "email",
         "ages_display", "allergies",
         "has_formula_display", "in_e_queue_display", "needs_pediatrist_display",
@@ -273,7 +282,7 @@ class SurveyApplicationAdmin(RequestAdminBase):
                 "коли ви її відкриваєте."
             ),
             "fields": ("summary_card", "status", "is_read", "admin_notes",
-                       ("created_at", "updated_at")),
+                       ("source", "handled_by"), ("created_at", "updated_at")),
         }),
         ("📞 Контакти", {
             "fields": (("parent_name", "child_name"), ("phone", "email")),
@@ -369,8 +378,9 @@ class SurveyApplicationAdmin(RequestAdminBase):
 # ============================================================================
 @admin.register(ContactMessage)
 class ContactMessageAdmin(RequestAdminBase):
-    list_display = ("unread_dot", "name", "phone", "message_short", "status", "created_at")
+    list_display = ("unread_dot", "name", "phone", "message_short", "source_badge", "status", "handled_by", "created_at")
     list_display_links = ("name",)
+    list_filter = ("status", "is_read", "source", "created_at")
     search_fields = ("name", "phone", "message")
     ordering = ("-created_at",)
 
@@ -378,22 +388,24 @@ class ContactMessageAdmin(RequestAdminBase):
     csv_columns = (
         ("Надійшло", lambda o: o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else ""),
         ("Статус", lambda o: o.get_status_display()),
+        ("Джерело", lambda o: o.get_source_display()),
         ("Ім'я", lambda o: o.name or ""),
         ("Телефон", lambda o: o.phone or ""),
         ("Повідомлення", lambda o: o.message or ""),
+        ("Опрацьовує", lambda o: o.handled_by or ""),
         ("Нотатки адміністратора", lambda o: o.admin_notes or ""),
     )
 
-    readonly_fields = ("summary_card", "name", "phone", "message", "created_at", "updated_at")
+    readonly_fields = ("summary_card", "name", "phone", "message", "source", "handled_by", "created_at", "updated_at")
 
     fieldsets = (
         ("🗂 Обробка повідомлення", {
             "description": _section_desc(
-                "Запити з контактної форми сайту. Контактні дані лише для перегляду; "
+                "Запити з контактної форми сайту й Telegram. Контактні дані лише для перегляду; "
                 "ведіть статус і нотатки для команди."
             ),
             "fields": ("summary_card", "status", "is_read", "admin_notes",
-                       ("created_at", "updated_at")),
+                       ("source", "handled_by"), ("created_at", "updated_at")),
         }),
         ("✉️ Повідомлення", {
             "fields": (("name", "phone"), "message"),
@@ -766,28 +778,37 @@ class FAQItemAdmin(admin.ModelAdmin):
 # ============================================================================
 @admin.register(Testimonial)
 class TestimonialAdmin(admin.ModelAdmin):
-    list_display = ("order", "author_name", "relation", "stars", "is_published", "photo_preview")
+    list_display = ("order", "author_name", "relation", "stars", "source_badge", "is_published", "photo_preview")
     list_display_links = ("author_name",)
     list_editable = ("order", "is_published")
-    list_filter = ("is_published", "rating")
-    readonly_fields = ("photo_preview_large",)
+    list_filter = ("is_published", "source", "rating")
+    readonly_fields = ("photo_preview_large", "source", "author_contact")
+    actions = ("publish", "unpublish")
 
     fieldsets = (
         (None, {
             "description": _section_desc(
                 "Відгуки батьків показуються окремою секцією на сайті (соціальний доказ). "
-                "Якщо відгуків немає — секція автоматично ховається.<br>"
-                "<b>Фото</b> необов'язкове (велике стискається автоматично). "
-                "Зніміть «Опубліковано», щоб тимчасово прибрати відгук із сайту."
+                "Якщо опублікованих відгуків немає — секція автоматично ховається.<br>"
+                "📲 Відгуки з <b>Telegram</b> надходять <b>неопублікованими</b> — перевірте текст і "
+                "увімкніть «Опубліковано» (або зробіть це прямо з Telegram).<br>"
+                "<b>Фото</b> необов'язкове (велике стискається автоматично)."
             ),
             "fields": ("author_name", "relation", "text", "rating",
-                       "photo", "photo_preview_large", "is_published", "order"),
+                       "photo", "photo_preview_large", "is_published",
+                       ("source", "author_contact"), "order"),
         }),
     )
 
     @admin.display(description="Оцінка")
     def stars(self, obj):
         return "★" * int(obj.rating or 0)
+
+    @admin.display(description="Джерело", ordering="source")
+    def source_badge(self, obj):
+        if obj.source == "telegram":
+            return mark_safe('<span style="color:#0088cc;font-weight:600;">✈️ Telegram</span>')
+        return mark_safe('<span style="color:#0f766e;">🌐 Адмінка</span>')
 
     @admin.display(description="Фото")
     def photo_preview(self, obj):
@@ -797,30 +818,44 @@ class TestimonialAdmin(admin.ModelAdmin):
     def photo_preview_large(self, obj):
         return _img_preview(obj.photo, max_h=140)
 
+    @admin.action(description="✅ Опублікувати вибрані")
+    def publish(self, request, queryset):
+        n = queryset.update(is_published=True)
+        self.message_user(request, f"Опубліковано відгуків: {n}.")
+
+    @admin.action(description="🙈 Зняти з публікації")
+    def unpublish(self, request, queryset):
+        n = queryset.update(is_published=False)
+        self.message_user(request, f"Знято з публікації: {n}.")
+
 
 # ============================================================================
-#  📨 TELEGRAM-СПОВІЩЕННЯ
+#  ✈️ TELEGRAM — КОРИСТУВАЧІ ТА ПРАВА
 # ============================================================================
 @admin.register(TelegramSubscriber)
 class TelegramSubscriberAdmin(admin.ModelAdmin):
-    list_display = ("name", "chat_id", "is_active", "created_at")
-    list_editable = ("is_active",)
-    readonly_fields = ("chat_id", "name", "created_at")
-    list_filter = ("is_active",)
+    list_display = ("name", "username", "phone", "is_admin", "is_active", "created_at")
+    list_editable = ("is_admin", "is_active")
+    readonly_fields = ("chat_id", "name", "username", "phone", "created_at")
+    list_filter = ("is_admin", "is_active")
+    search_fields = ("name", "username", "phone", "chat_id")
 
     fieldsets = (
         (None, {
             "description": _section_desc(
-                "Хто отримує сповіщення про нові заявки в Telegram. Записи з'являються "
-                "<b>автоматично</b>, коли адміністратор пише боту <code>/start</code>.<br>"
-                "Зніміть «Отримує сповіщення», щоб тимчасово вимкнути сповіщення для когось."
+                "Усі, хто писав боту. Записи з'являються <b>автоматично</b> після <code>/start</code>.<br><br>"
+                "✅ Увімкніть <b>«Адміністратор»</b> — і людина отримає сповіщення в Telegram про надані права, "
+                "почне отримувати всі звернення й зможе керувати ними кнопками (статуси, 📦 Архів, модерація відгуків).<br>"
+                "Звичайні користувачі (без прапорця) можуть лише ставити запитання та лишати відгуки.<br>"
+                "<b>«Отримує сповіщення»</b> — тимчасово вимкнути сповіщення для адміністратора (не знімаючи прав)."
             ),
-            "fields": ("name", "chat_id", "is_active", "created_at"),
+            "fields": (("name", "username"), ("phone", "chat_id"),
+                       "is_admin", "is_active", "created_at"),
         }),
     )
 
     def has_add_permission(self, request):
-        return False  # підписка лише через /start боту
+        return False  # запис створюється лише через /start боту
 
 
 # Заголовки/брендинг адмінки задаються у PoppinsAdminSite (api/admin_site.py).
