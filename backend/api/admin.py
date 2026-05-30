@@ -53,20 +53,21 @@ def _section_desc(text):
 _STATUS_STYLE = {
     "new":         ("#0f766e", "#ccfbf1"),
     "in_progress": ("#92400e", "#fef3c7"),
-    "contacted":   ("#1e40af", "#dbeafe"),
-    "enrolled":    ("#166534", "#dcfce7"),
+    "done":        ("#166534", "#dcfce7"),
     "rejected":    ("#9f1239", "#ffe4e6"),
-    "archived":    ("#475569", "#f1f5f9"),
 }
 
 
 def _status_badge(obj):
     fg, bg = _STATUS_STYLE.get(obj.status, ("#475569", "#f1f5f9"))
-    return format_html(
+    badge = format_html(
         '<span style="background:{};color:{};padding:3px 11px;border-radius:999px;'
         'font-size:12px;font-weight:700;white-space:nowrap;">{}</span>',
         bg, fg, obj.get_status_display(),
     )
+    if getattr(obj, "is_archived", False):
+        badge = format_html('{} <span style="color:#94a3b8;font-size:11px;">📦</span>', badge)
+    return badge
 
 
 def _yesno_display(val):
@@ -131,14 +132,14 @@ class SingletonAdmin(admin.ModelAdmin):
 class RequestAdminBase(admin.ModelAdmin):
     """Спільна логіка: статуси, фільтри, масові дії, авто-«прочитано»."""
     date_hierarchy = "created_at"
-    list_filter = ("status", "is_read", "created_at")
+    list_filter = ("status", "is_read", "is_archived", "source", "created_at")
     list_editable = ("status",)
     list_per_page = 30
     save_on_top = True
     actions = (
         "export_csv",
-        "mark_in_progress", "mark_contacted", "mark_enrolled",
-        "mark_rejected", "mark_archived", "mark_read", "mark_unread",
+        "mark_in_progress", "mark_done", "mark_rejected",
+        "mark_read", "mark_unread", "do_archive", "do_unarchive",
     )
 
     # Підкласи задають: ім'я файлу та колонки [(заголовок, callable(obj)->str)]
@@ -148,6 +149,20 @@ class RequestAdminBase(admin.ModelAdmin):
     # --- Звернення не створюються вручну (надходять із сайту) ---
     def has_add_permission(self, request):
         return False
+
+    # --- Архів окремо: ховаємо архівні за замовчуванням + авто-архівація старих ---
+    def get_queryset(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        from .models import ARCHIVE_AFTER_DAYS
+        cutoff = timezone.now() - timedelta(days=ARCHIVE_AFTER_DAYS)
+        self.model.objects.filter(
+            is_archived=False, status__in=["done", "rejected"], updated_at__lt=cutoff
+        ).update(is_archived=True)
+        qs = super().get_queryset(request)
+        if "is_archived__exact" not in request.GET:
+            qs = qs.filter(is_archived=False)
+        return qs
 
     # --- Експорт у CSV (Excel-сумісний, з BOM) ---
     @admin.action(description="⬇️ Експортувати вибрані у CSV (Excel)")
@@ -186,30 +201,45 @@ class RequestAdminBase(admin.ModelAdmin):
             return mark_safe('<span title="З Telegram" style="color:#0088cc;font-weight:600;">✈️ Telegram</span>')
         return mark_safe('<span title="З сайту" style="color:#0f766e;">🌐 Сайт</span>')
 
-    # --- Масові дії ---
+    # --- Масові дії (через save(), щоб синхронізувалось у Telegram) ---
     def _bulk(self, request, queryset, status, label):
-        n = queryset.update(status=status)
-        self.message_user(request, f"Оновлено заявок: {n} → «{label}».")
+        n = 0
+        for obj in queryset:
+            if obj.status != status:
+                obj.status = status
+                obj.save()
+                n += 1
+        self.message_user(request, f"Оновлено: {n} → «{label}».")
 
     @admin.action(description="📞 Позначити: В роботі")
     def mark_in_progress(self, request, queryset):
         self._bulk(request, queryset, "in_progress", "В роботі")
 
-    @admin.action(description="✅ Позначити: Зв'язались")
-    def mark_contacted(self, request, queryset):
-        self._bulk(request, queryset, "contacted", "Зв'язались")
-
-    @admin.action(description="🎉 Позначити: Зараховано")
-    def mark_enrolled(self, request, queryset):
-        self._bulk(request, queryset, "enrolled", "Зараховано")
+    @admin.action(description="✅ Позначити: Опрацьовано")
+    def mark_done(self, request, queryset):
+        self._bulk(request, queryset, "done", "Опрацьовано")
 
     @admin.action(description="🚫 Позначити: Відмова")
     def mark_rejected(self, request, queryset):
         self._bulk(request, queryset, "rejected", "Відмова")
 
-    @admin.action(description="📦 Перенести в Архів")
-    def mark_archived(self, request, queryset):
-        self._bulk(request, queryset, "archived", "Архів")
+    @admin.action(description="📦 Перенести в архів")
+    def do_archive(self, request, queryset):
+        n = 0
+        for obj in queryset.filter(is_archived=False):
+            obj.is_archived = True
+            obj.save()
+            n += 1
+        self.message_user(request, f"Перенесено в архів: {n}.")
+
+    @admin.action(description="♻️ Повернути з архіву")
+    def do_unarchive(self, request, queryset):
+        n = 0
+        for obj in queryset.filter(is_archived=True):
+            obj.is_archived = False
+            obj.save()
+            n += 1
+        self.message_user(request, f"Повернено з архіву: {n}.")
 
     @admin.action(description="👁 Позначити як переглянуті")
     def mark_read(self, request, queryset):
@@ -230,7 +260,7 @@ class SurveyApplicationAdmin(RequestAdminBase):
     list_display = ("unread_dot", "child_name", "parent_name", "phone",
                     "ages_short", "source_badge", "status", "handled_by", "created_at")
     list_display_links = ("child_name",)
-    list_filter = ("status", "is_read", "source", "created_at")
+    list_filter = ("status", "is_read", "is_archived", "source", "created_at")
     search_fields = ("child_name", "parent_name", "phone", "email")
     ordering = ("-created_at",)
 
@@ -281,7 +311,7 @@ class SurveyApplicationAdmin(RequestAdminBase):
                 "<b>нотатки</b> для команди. Заявка автоматично позначається переглянутою, "
                 "коли ви її відкриваєте."
             ),
-            "fields": ("summary_card", "status", "is_read", "admin_notes",
+            "fields": ("summary_card", "status", ("is_read", "is_archived"), "admin_notes",
                        ("source", "handled_by"), ("created_at", "updated_at")),
         }),
         ("📞 Контакти", {
@@ -380,7 +410,7 @@ class SurveyApplicationAdmin(RequestAdminBase):
 class ContactMessageAdmin(RequestAdminBase):
     list_display = ("unread_dot", "name", "phone", "message_short", "source_badge", "status", "handled_by", "created_at")
     list_display_links = ("name",)
-    list_filter = ("status", "is_read", "source", "created_at")
+    list_filter = ("status", "is_read", "is_archived", "source", "created_at")
     search_fields = ("name", "phone", "message")
     ordering = ("-created_at",)
 
@@ -404,7 +434,7 @@ class ContactMessageAdmin(RequestAdminBase):
                 "Запити з контактної форми сайту й Telegram. Контактні дані лише для перегляду; "
                 "ведіть статус і нотатки для команди."
             ),
-            "fields": ("summary_card", "status", "is_read", "admin_notes",
+            "fields": ("summary_card", "status", ("is_read", "is_archived"), "admin_notes",
                        ("source", "handled_by"), ("created_at", "updated_at")),
         }),
         ("✉️ Повідомлення", {
@@ -778,11 +808,11 @@ class FAQItemAdmin(admin.ModelAdmin):
 # ============================================================================
 @admin.register(Testimonial)
 class TestimonialAdmin(admin.ModelAdmin):
-    list_display = ("order", "author_name", "relation", "stars", "source_badge", "is_published", "photo_preview")
+    list_display = ("order", "author_name", "relation", "stars", "source_badge", "is_published", "created_at")
     list_display_links = ("author_name",)
     list_editable = ("order", "is_published")
     list_filter = ("is_published", "source", "rating")
-    readonly_fields = ("photo_preview_large", "source", "author_contact")
+    readonly_fields = ("source", "author_contact", "created_at")
     actions = ("publish", "unpublish")
 
     fieldsets = (
@@ -792,11 +822,10 @@ class TestimonialAdmin(admin.ModelAdmin):
                 "Якщо опублікованих відгуків немає — секція автоматично ховається.<br>"
                 "📲 Відгуки з <b>Telegram</b> надходять <b>неопублікованими</b> — перевірте текст і "
                 "увімкніть «Опубліковано» (або зробіть це прямо з Telegram).<br>"
-                "<b>Фото</b> необов'язкове (велике стискається автоматично)."
+                "У полі <b>«Хто це»</b> вкажіть підпис на кшталт «мама Софійки» — він показується на сайті."
             ),
-            "fields": ("author_name", "relation", "text", "rating",
-                       "photo", "photo_preview_large", "is_published",
-                       ("source", "author_contact"), "order"),
+            "fields": ("author_name", "relation", "text", "rating", "is_published",
+                       ("source", "author_contact"), "created_at", "order"),
         }),
     )
 
@@ -809,14 +838,6 @@ class TestimonialAdmin(admin.ModelAdmin):
         if obj.source == "telegram":
             return mark_safe('<span style="color:#0088cc;font-weight:600;">✈️ Telegram</span>')
         return mark_safe('<span style="color:#0f766e;">🌐 Адмінка</span>')
-
-    @admin.display(description="Фото")
-    def photo_preview(self, obj):
-        return _img_preview(obj.photo, max_h=44)
-
-    @admin.display(description="Фото")
-    def photo_preview_large(self, obj):
-        return _img_preview(obj.photo, max_h=140)
 
     @admin.action(description="✅ Опублікувати вибрані")
     def publish(self, request, queryset):

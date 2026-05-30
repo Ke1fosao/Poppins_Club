@@ -25,6 +25,7 @@ _TIMEOUT = 15
 # Стани діалогу
 ST_IDLE = "idle"
 ST_QUESTION = "awaiting_question"
+ST_REVIEW_RELATION = "awaiting_review_relation"
 ST_REVIEW = "awaiting_review_text"
 
 # Анти-спам
@@ -57,7 +58,13 @@ def webhook_secret():
 
 
 def _site_base_url():
-    return os.environ.get("SITE_BASE_URL", "").strip().rstrip("/")
+    base = os.environ.get("SITE_BASE_URL", "").strip().rstrip("/")
+    if base:
+        return base
+    # Запасний варіант: беремо домен із DJANGO_ALLOWED_HOSTS (на PA він заданий)
+    hosts = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+             if h.strip() and h.strip() != "*"]
+    return f"https://{hosts[0]}" if hosts else ""
 
 
 def _bootstrap_admin_ids():
@@ -102,6 +109,10 @@ def edit_message_text(chat_id, message_id, text, reply_markup=None):
     return _call("editMessageText", **data)
 
 
+def edit_message_reply_markup(chat_id, message_id, reply_markup):
+    return _call("editMessageReplyMarkup", chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
+
+
 # ==========================================================================
 #  Webhook-керування (manage.py telegram_webhook ...)
 # ==========================================================================
@@ -110,6 +121,7 @@ def set_webhook(base_url):
         return {"ok": False, "description": "Не задано TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET"}
     url = base_url.rstrip("/") + f"/api/telegram/{webhook_secret()}/"
     return _call("setWebhook", url=url,
+                 secret_token=webhook_secret(),  # Telegram надсилатиме заголовок для перевірки
                  allowed_updates=["message", "callback_query"],
                  drop_pending_updates=True)
 
@@ -207,14 +219,26 @@ def _rating_kb():
     ]]}
 
 
-def _status_kb(prefix, obj_id):
-    return {"inline_keyboard": [
-        [{"text": "📞 В роботі", "callback_data": f"{prefix}:in_progress:{obj_id}"},
-         {"text": "✅ Зв'язались", "callback_data": f"{prefix}:contacted:{obj_id}"}],
-        [{"text": "🎉 Зараховано", "callback_data": f"{prefix}:enrolled:{obj_id}"},
-         {"text": "🚫 Відмова", "callback_data": f"{prefix}:rejected:{obj_id}"}],
-        [{"text": "📦 Архів", "callback_data": f"{prefix}:archived:{obj_id}"}],
-    ]}
+def _status_kb(prefix, obj_id, is_archived=False):
+    row1 = [
+        {"text": "📞 В роботі", "callback_data": f"{prefix}:in_progress:{obj_id}"},
+        {"text": "✅ Опрацьовано", "callback_data": f"{prefix}:done:{obj_id}"},
+    ]
+    row2 = []
+    if prefix == "s":  # «Відмова» — лише для заявок (не для питань)
+        row2.append({"text": "🚫 Відмова", "callback_data": f"{prefix}:rejected:{obj_id}"})
+    if is_archived:
+        row2.append({"text": "♻️ З архіву", "callback_data": f"arch:{prefix}:0:{obj_id}"})
+    else:
+        row2.append({"text": "📦 Архів", "callback_data": f"arch:{prefix}:1:{obj_id}"})
+    return {"inline_keyboard": [row1, row2]}
+
+
+def _confirm_kb(prefix, status, obj_id):
+    return {"inline_keyboard": [[
+        {"text": "✅ Так, відмова", "callback_data": f"{prefix}:{status}!:{obj_id}"},
+        {"text": "↩️ Назад", "callback_data": f"back:{prefix}:{obj_id}"},
+    ]]}
 
 
 def _review_mod_kb(obj_id):
@@ -281,20 +305,52 @@ def _format_review(t):
 # ==========================================================================
 #  Вихідні сповіщення (адмінам)
 # ==========================================================================
+def _send_and_collect(obj, prefix, text, kb):
+    """Шле сповіщення всім адмінам і зберігає {chat_id: message_id} для синхронізації."""
+    sent = {}
+    for chat_id in _active_admin_chats():
+        resp = send_message(chat_id, text, reply_markup=kb)
+        mid = (resp or {}).get("result", {}).get("message_id") if isinstance(resp, dict) else None
+        if mid:
+            sent[str(chat_id)] = mid
+    if sent:
+        obj.tg_messages = sent
+        obj.save(update_fields=["tg_messages"])
+
+
 def notify_new_survey(app):
     if not is_configured():
         return
-    text = _format_survey(app) + _admin_link("s", app.id)
-    for chat_id in _active_admin_chats():
-        send_message(chat_id, text, reply_markup=_status_kb("s", app.id))
+    _send_and_collect(app, "s", _format_survey(app) + _admin_link("s", app.id),
+                      _status_kb("s", app.id, app.is_archived))
 
 
 def notify_new_contact(msg):
     if not is_configured():
         return
-    text = _format_contact(msg) + _admin_link("c", msg.id)
-    for chat_id in _active_admin_chats():
-        send_message(chat_id, text, reply_markup=_status_kb("c", msg.id))
+    _send_and_collect(msg, "c", _format_contact(msg) + _admin_link("c", msg.id),
+                      _status_kb("c", msg.id, msg.is_archived))
+
+
+def sync_status_to_telegram(obj):
+    """Оновлює статус у ВСІХ адмінів, кому пішло сповіщення (виклик із сигналу)."""
+    if not is_configured():
+        return
+    msgs = obj.tg_messages or {}
+    if not msgs:
+        return
+    from .models import REQUEST_STATUS_CHOICES
+    labels = dict(REQUEST_STATUS_CHOICES)
+    prefix = "s" if obj.__class__.__name__ == "SurveyApplication" else "c"
+    base = (_format_survey(obj) if prefix == "s" else _format_contact(obj)) + _admin_link(prefix, obj.id)
+    footer = f"\n\n📌 Статус: <b>{_esc(labels.get(obj.status, obj.status))}</b>"
+    if obj.is_archived:
+        footer += " · 📦 Архів"
+    if obj.handled_by:
+        footer += f" · 👤 {_esc(obj.handled_by)}"
+    kb = _status_kb(prefix, obj.id, obj.is_archived)
+    for chat_id, message_id in list(msgs.items()):
+        edit_message_text(chat_id, message_id, base + footer, reply_markup=kb)
 
 
 def notify_new_review(t):
@@ -421,6 +477,11 @@ def _handle_message(msg):
     if user.state == ST_QUESTION:
         _submit_question(user, text)
         return
+    if user.state == ST_REVIEW_RELATION:
+        _set_state(user, ST_REVIEW, relation=text[:100])
+        send_message(chat_id, "Дякую! Тепер напишіть сам відгук одним повідомленням 💬",
+                     reply_markup=_cancel_menu())
+        return
     if user.state == ST_REVIEW:
         _submit_review(user, text)
         return
@@ -428,6 +489,12 @@ def _handle_message(msg):
     # Нічого не підійшло
     send_message(chat_id, _admin_help() if admin else _parent_help(),
                  reply_markup=_admin_menu() if admin else _parent_menu(user))
+
+
+def _get_request_obj(prefix, obj_id):
+    from .models import SurveyApplication, ContactMessage
+    Model = SurveyApplication if prefix == "s" else ContactMessage
+    return Model.objects.filter(pk=obj_id).first()
 
 
 def _handle_callback(cb):
@@ -438,13 +505,14 @@ def _handle_callback(cb):
     message_id = cb.get("message", {}).get("message_id")
     user = _upsert_user(frm.get("id"), frm)
 
-    # Вибір оцінки відгуку (доступно всім)
+    # Вибір оцінки відгуку (доступно всім) → питаємо «хто ви»
     m = re.match(r"^rate:([1-5])$", data)
     if m:
-        _set_state(user, ST_REVIEW, rating=int(m.group(1)))
-        answer_callback(cb_id, "Оцінка збережена")
-        edit_message_text(chat_id, message_id, f"{'⭐' * int(m.group(1))}\n\n✍️ Тепер напишіть свій відгук одним повідомленням:")
-        send_message(chat_id, "Очікую ваш відгук…", reply_markup=_cancel_menu())
+        _set_state(user, ST_REVIEW_RELATION, rating=int(m.group(1)))
+        answer_callback(cb_id, "Дякую!")
+        edit_message_text(chat_id, message_id,
+                          f"{'⭐' * int(m.group(1))}\n\n✍️ Хто ви для дитини? Напишіть, напр. «мама Софійки»:")
+        send_message(chat_id, "Очікую…", reply_markup=_cancel_menu())
         return
 
     # Далі — лише для адміністраторів
@@ -454,27 +522,50 @@ def _handle_callback(cb):
 
     actor = user.name or user.username or str(chat_id)
 
-    # Зміна статусу заявки/повідомлення
-    m = re.match(r"^([sc]):([a-z_]+):(\d+)$", data)
+    # Повернутися від підтвердження до звичайних кнопок
+    m = re.match(r"^back:([sc]):(\d+)$", data)
     if m:
-        prefix, status, obj_id = m.group(1), m.group(2), int(m.group(3))
-        from .models import SurveyApplication, ContactMessage, REQUEST_STATUS_CHOICES
+        prefix, obj_id = m.group(1), int(m.group(2))
+        obj = _get_request_obj(prefix, obj_id)
+        if obj:
+            edit_message_reply_markup(chat_id, message_id, _status_kb(prefix, obj_id, obj.is_archived))
+        answer_callback(cb_id)
+        return
+
+    # Архів / повернення з архіву
+    m = re.match(r"^arch:([sc]):([01]):(\d+)$", data)
+    if m:
+        prefix, flag, obj_id = m.group(1), m.group(2), int(m.group(3))
+        obj = _get_request_obj(prefix, obj_id)
+        if not obj:
+            answer_callback(cb_id, "Запис не знайдено")
+            return
+        obj.is_archived = (flag == "1")
+        obj.is_read = True
+        obj.handled_by = actor
+        obj.save()  # сигнал синхронізує всі копії сповіщення
+        answer_callback(cb_id, "📦 В архіві" if flag == "1" else "♻️ Повернено")
+        return
+
+    # Зміна статусу (з підтвердженням для «Відмова»)
+    m = re.match(r"^([sc]):([a-z_]+)(!?):(\d+)$", data)
+    if m:
+        prefix, status, bang, obj_id = m.group(1), m.group(2), m.group(3), int(m.group(4))
+        from .models import REQUEST_STATUS_CHOICES
         labels = dict(REQUEST_STATUS_CHOICES)
-        Model = SurveyApplication if prefix == "s" else ContactMessage
-        try:
-            obj = Model.objects.get(pk=obj_id)
-        except Model.DoesNotExist:
+        if status == "rejected" and not bang:
+            edit_message_reply_markup(chat_id, message_id, _confirm_kb(prefix, status, obj_id))
+            answer_callback(cb_id, "Підтвердьте дію")
+            return
+        obj = _get_request_obj(prefix, obj_id)
+        if not obj:
             answer_callback(cb_id, "Запис не знайдено")
             return
         obj.status = status
         obj.is_read = True
         obj.handled_by = actor
-        obj.save(update_fields=["status", "is_read", "handled_by", "updated_at"])
+        obj.save()  # сигнал синхронізує статус у ВСІХ адмінів
         answer_callback(cb_id, f"Статус: {labels.get(status, status)}")
-        base = _format_survey(obj) if prefix == "s" else _format_contact(obj)
-        base += _admin_link(prefix, obj_id)
-        new_text = base + f"\n\n📌 Статус: <b>{_esc(labels.get(status, status))}</b> · 👤 {_esc(actor)}"
-        edit_message_text(chat_id, message_id, new_text, reply_markup=_status_kb(prefix, obj_id))
         _broadcast_status_change(actor, obj, "заявка" if prefix == "s" else "повідомлення",
                                  labels.get(status, status), exclude_chat=chat_id)
         return
@@ -543,12 +634,14 @@ def _submit_review(user, text):
         send_message(user.chat_id, "Напишіть, будь ласка, трохи більше (мін. 5 символів).")
         return
     text = text[:MAX_REVIEW]
-    rating = int((user.state_data or {}).get("rating", 5))
+    sd = user.state_data or {}
+    rating = int(sd.get("rating", 5))
+    relation = (sd.get("relation") or "")[:100]
     contact = " ".join(filter(None, [user.phone, f"@{user.username}" if user.username else ""]))
     from .models import Testimonial
     t = Testimonial.objects.create(
         author_name=(user.name or user.username or "Батьки")[:100],
-        relation="",
+        relation=relation,
         text=text,
         rating=rating,
         is_published=False,        # модерація!
@@ -624,23 +717,23 @@ def _stats_text():
     s = SurveyApplication.objects
     return (
         "📊 <b>Статистика заявок</b>\n\n"
-        f"🆕 Нові: <b>{s.filter(status='new').count()}</b>\n"
-        f"📞 В роботі: <b>{s.filter(status__in=['in_progress', 'contacted']).count()}</b>\n"
-        f"🎉 Зараховано: <b>{s.filter(status='enrolled').count()}</b>\n"
-        f"🚫 Відмова: <b>{s.filter(status='rejected').count()}</b>\n"
-        f"📦 Архів: <b>{s.filter(status='archived').count()}</b>\n"
+        f"🆕 Нові: <b>{s.filter(status='new', is_archived=False).count()}</b>\n"
+        f"📞 В роботі: <b>{s.filter(status='in_progress', is_archived=False).count()}</b>\n"
+        f"✅ Опрацьовано: <b>{s.filter(status='done', is_archived=False).count()}</b>\n"
+        f"🚫 Відмова: <b>{s.filter(status='rejected', is_archived=False).count()}</b>\n"
+        f"📦 В архіві: <b>{s.filter(is_archived=True).count()}</b>\n"
         f"📁 Усього: <b>{s.count()}</b>\n\n"
-        f"📨 Нові повідомлення: <b>{ContactMessage.objects.filter(status='new').count()}</b>"
+        f"📨 Нові повідомлення: <b>{ContactMessage.objects.filter(status='new', is_archived=False).count()}</b>"
     )
 
 
 def _send_new_apps(chat_id):
     from .models import SurveyApplication
-    new_apps = list(SurveyApplication.objects.filter(status="new")[:8])
+    new_apps = list(SurveyApplication.objects.filter(status="new", is_archived=False)[:8])
     if not new_apps:
         send_message(chat_id, "✅ Нових заявок немає. Чудова робота! 🎉")
         return
     send_message(chat_id, f"🆕 Нових заявок: <b>{len(new_apps)}</b>")
     for app in new_apps:
         send_message(chat_id, _format_survey(app) + _admin_link("s", app.id),
-                     reply_markup=_status_kb("s", app.id))
+                     reply_markup=_status_kb("s", app.id, app.is_archived))

@@ -81,15 +81,17 @@ COLOR_CHOICES = [
     ("slate", "⚪ Сірий"),
 ]
 
-# Єдиний робочий процес обробки звернень
+# Єдиний робочий процес обробки звернень.
+# «Архів» — це окремий прапорець (is_archived), а НЕ статус, щоб не мішався.
 REQUEST_STATUS_CHOICES = [
     ("new", "🆕 Нова"),
     ("in_progress", "📞 В роботі"),
-    ("contacted", "✅ Зв'язались"),
-    ("enrolled", "🎉 Зараховано"),
-    ("rejected", "🚫 Відмова"),
-    ("archived", "📦 Архів"),
+    ("done", "✅ Опрацьовано"),
+    ("rejected", "🚫 Відмова"),   # переважно для заявок
 ]
+
+# Через скільки днів після закриття (опрацьовано/відмова) заявка йде в архів
+ARCHIVE_AFTER_DAYS = 3
 
 # Звідки надійшло звернення
 SOURCE_CHOICES = [
@@ -124,6 +126,15 @@ class RequestWorkflowModel(models.Model):
         "Опрацьовує", max_length=150, blank=True, default="",
         help_text="Хто з адміністраторів останнім змінив статус (зокрема з Telegram).",
     )
+    is_archived = models.BooleanField(
+        "В архіві", default=False, db_index=True,
+        help_text="Закриті звернення автоматично йдуть в архів через кілька днів, "
+                  "щоб не заважати. Можна також архівувати/розархівувати вручну.",
+    )
+    # Куди надіслані сповіщення в Telegram: {chat_id: message_id} — щоб оновлювати
+    # статус у ВСІХ адміністраторів одночасно (а не лише в того, хто натиснув).
+    tg_messages = models.JSONField(default=dict, blank=True, editable=False)
+
     created_at = models.DateTimeField("Надійшло", auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField("Останнє оновлення", auto_now=True, null=True)
 
@@ -133,8 +144,12 @@ class RequestWorkflowModel(models.Model):
 
     @property
     def is_open(self):
-        """Звернення «в роботі» — ще не закрите (не зараховано/відмова/архів)."""
-        return self.status in ("new", "in_progress", "contacted")
+        """Звернення ще в роботі (не закрите)."""
+        return self.status in ("new", "in_progress")
+
+    @property
+    def is_closed(self):
+        return self.status in ("done", "rejected")
 
 
 # ===========================================================================
@@ -456,14 +471,14 @@ class FAQItem(models.Model):
         return self.question
 
 
-class Testimonial(ImageOptimizedModel):
+class Testimonial(models.Model):
     """Відгук батьків — секція соціального доказу на сайті."""
-    IMAGE_FIELDS = {"photo": 400}
-
     author_name = models.CharField("Ім'я автора", max_length=100)
-    relation = models.CharField("Хто це (напр. «мама Софійки»)", max_length=100, blank=True, default="")
+    relation = models.CharField(
+        "Хто це (напр. «мама Софійки»)", max_length=100, blank=True, default="",
+        help_text="Підпис під відгуком — чий з батьків і чиєї дитини.",
+    )
     text = models.TextField("Текст відгуку")
-    photo = models.ImageField("Фото (необов'язково)", upload_to="testimonials/", blank=True, null=True)
     rating = models.PositiveSmallIntegerField(
         "Оцінка", default=5, choices=[(i, "★" * i) for i in range(1, 6)],
     )
@@ -476,6 +491,7 @@ class Testimonial(ImageOptimizedModel):
         "Контакт автора", max_length=150, blank=True, default="",
         help_text="Телефон / @username автора (для відгуків із Telegram).",
     )
+    created_at = models.DateTimeField("Дата", auto_now_add=True, null=True)
     order = models.PositiveIntegerField("Порядок", default=0)
 
     class Meta:

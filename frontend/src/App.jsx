@@ -2263,16 +2263,16 @@ const Testimonials = ({ content, items }) => {
               </div>
               <blockquote className="text-slate-700 leading-relaxed break-words flex-grow">«{t.text}»</blockquote>
               <figcaption className="flex items-center gap-3 mt-6 pt-5 border-t border-slate-100">
-                {t.photo ? (
-                  <img src={t.photo} alt={t.name} loading="lazy" decoding="async" className="w-12 h-12 rounded-full object-cover shrink-0" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 font-bold text-lg flex items-center justify-center shrink-0">
-                    {(t.name || '?').trim().charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 font-bold text-lg flex items-center justify-center shrink-0">
+                  {(t.name || '?').trim().charAt(0).toUpperCase()}
+                </div>
                 <div className="min-w-0">
                   <p className="font-bold text-slate-800 break-words leading-tight">{t.name}</p>
-                  {t.relation && <p className="text-sm text-slate-500 break-words">{t.relation}</p>}
+                  {(t.relation || t.date) && (
+                    <p className="text-sm text-slate-500 break-words">
+                      {t.relation}{t.relation && t.date ? ' · ' : ''}{t.date}
+                    </p>
+                  )}
                 </div>
               </figcaption>
             </figure>

@@ -165,7 +165,7 @@ def get_site_content(request):
                 "relation": t.relation,
                 "text": t.text,
                 "rating": t.rating,
-                "photo": _abs_url(request, t.photo),
+                "date": t.created_at.strftime("%d.%m.%Y") if t.created_at else "",
             }
             for t in testimonials
         ],
@@ -642,9 +642,13 @@ def submit_survey(request):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def telegram_webhook(request, secret):
-    # Секрет у шляху — захист від сторонніх запитів
+    # 1) Секрет у шляху — захист від сторонніх запитів
     if not tg.webhook_secret() or secret != tg.webhook_secret():
         return Response(status=_http_status.HTTP_404_NOT_FOUND)
+    # 2) Додатковий шар: секретний заголовок від Telegram (якщо встановлений)
+    header = request.META.get('HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN', '')
+    if header and header != tg.webhook_secret():
+        return Response(status=_http_status.HTTP_403_FORBIDDEN)
     try:
         tg.handle_update(request.data)
     except Exception:
