@@ -23,7 +23,7 @@ from .models import (
     ContactMessage, SurveyApplication,
     SiteInfo, PageText, FAQItem,
     AboutCard, DirectionCard, DirectionGalleryImage, DirectionCollageImage,
-    PremiseSlide, ServiceGroup,
+    PremiseSlide, ServiceGroup, Testimonial, TelegramSubscriber,
 )
 
 
@@ -759,6 +759,68 @@ class FAQItemAdmin(admin.ModelAdmin):
             "fields": ("question", "answer", "order"),
         }),
     )
+
+
+# ============================================================================
+#  🗣 ВІДГУКИ БАТЬКІВ
+# ============================================================================
+@admin.register(Testimonial)
+class TestimonialAdmin(admin.ModelAdmin):
+    list_display = ("order", "author_name", "relation", "stars", "is_published", "photo_preview")
+    list_display_links = ("author_name",)
+    list_editable = ("order", "is_published")
+    list_filter = ("is_published", "rating")
+    readonly_fields = ("photo_preview_large",)
+
+    fieldsets = (
+        (None, {
+            "description": _section_desc(
+                "Відгуки батьків показуються окремою секцією на сайті (соціальний доказ). "
+                "Якщо відгуків немає — секція автоматично ховається.<br>"
+                "<b>Фото</b> необов'язкове (велике стискається автоматично). "
+                "Зніміть «Опубліковано», щоб тимчасово прибрати відгук із сайту."
+            ),
+            "fields": ("author_name", "relation", "text", "rating",
+                       "photo", "photo_preview_large", "is_published", "order"),
+        }),
+    )
+
+    @admin.display(description="Оцінка")
+    def stars(self, obj):
+        return "★" * int(obj.rating or 0)
+
+    @admin.display(description="Фото")
+    def photo_preview(self, obj):
+        return _img_preview(obj.photo, max_h=44)
+
+    @admin.display(description="Фото")
+    def photo_preview_large(self, obj):
+        return _img_preview(obj.photo, max_h=140)
+
+
+# ============================================================================
+#  📨 TELEGRAM-СПОВІЩЕННЯ
+# ============================================================================
+@admin.register(TelegramSubscriber)
+class TelegramSubscriberAdmin(admin.ModelAdmin):
+    list_display = ("name", "chat_id", "is_active", "created_at")
+    list_editable = ("is_active",)
+    readonly_fields = ("chat_id", "name", "created_at")
+    list_filter = ("is_active",)
+
+    fieldsets = (
+        (None, {
+            "description": _section_desc(
+                "Хто отримує сповіщення про нові заявки в Telegram. Записи з'являються "
+                "<b>автоматично</b>, коли адміністратор пише боту <code>/start</code>.<br>"
+                "Зніміть «Отримує сповіщення», щоб тимчасово вимкнути сповіщення для когось."
+            ),
+            "fields": ("name", "chat_id", "is_active", "created_at"),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        return False  # підписка лише через /start боту
 
 
 # Заголовки/брендинг адмінки задаються у PoppinsAdminSite (api/admin_site.py).

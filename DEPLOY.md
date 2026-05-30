@@ -106,9 +106,20 @@ DJANGO_SECRET_KEY=YOUR_NEW_SECRET_KEY
 DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=ke1fosao.pythonanywhere.com
 DJANGO_CSRF_TRUSTED_ORIGINS=https://ke1fosao.pythonanywhere.com
+
+# ШІ-помічник (Google Gemini)
+GEMINI_API_KEY=ваш_ключ_gemini
+
+# Telegram-бот сповіщень (див. розділ «Telegram-бот» нижче)
+TELEGRAM_BOT_TOKEN=токен_від_BotFather
+TELEGRAM_WEBHOOK_SECRET=будь_який_довгий_випадковий_рядок
+SITE_BASE_URL=https://ke1fosao.pythonanywhere.com
+# TELEGRAM_ALLOWED_IDS=123456789   # (необов'язково) обмежити бот лише вашим Telegram id
 ```
 
 Збережіть (`Ctrl+O`, `Enter`, `Ctrl+X` у nano).
+
+> 🔒 `.env` у git **не потрапляє** — секрети живуть лише на сервері.
 
 ---
 
@@ -181,6 +192,9 @@ application = get_wsgi_application()
 
 > Замініть `ke1fosao` на ваш username усюди.
 > Збережіть (Ctrl+S чи кнопка Save вгорі).
+>
+> 💡 `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN` тощо **не потрібно** дублювати тут — вони
+> автоматично читаються з `backend/.env` (крок 6). Тут лишіть лише Django-змінні вище.
 
 ### 9.4 Static files (mapping)
 Прокрутіть до секції **Static files** і додайте **3 рядки**:
@@ -206,6 +220,31 @@ application = get_wsgi_application()
 - `/anketa` — анкета
 - `/admin/` — адмін-панель (увійти суперюзером з кроку 7)
 - `/api/content/` — JSON всіх даних сайту
+
+---
+
+## 11. 🔔 Telegram-бот сповіщень (один раз)
+
+Бот надсилає кожну нову заявку/повідомлення у Telegram і дозволяє міняти статус кнопками.
+
+1. **Створіть бота** у [@BotFather](https://t.me/BotFather) → `/newbot` → отримаєте **токен**.
+2. **Додайте у `backend/.env`** (крок 6):
+   ```env
+   TELEGRAM_BOT_TOKEN=токен_від_BotFather
+   TELEGRAM_WEBHOOK_SECRET=довгий_випадковий_рядок
+   SITE_BASE_URL=https://ke1fosao.pythonanywhere.com
+   ```
+3. **Зареєструйте webhook** (один раз, у PA Bash console):
+   ```bash
+   workon poppins-env
+   cd ~/Poppins_Club/backend
+   python manage.py telegram_webhook set https://ke1fosao.pythonanywhere.com
+   # перевірити: python manage.py telegram_webhook info
+   ```
+4. **Напишіть боту `/start`** — і ви почнете отримувати сповіщення. Готово!
+
+> Безкоштовний PA дозволяє webhook (вхідний HTTPS), тому постійний процес НЕ потрібен.
+> Якщо змінили токен/секрет — повторіть крок 3 та зробіть **Reload**.
 
 ---
 

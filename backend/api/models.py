@@ -21,6 +21,24 @@
 from django.core.validators import RegexValidator
 from django.db import models
 
+from .image_utils import optimize_image_field
+
+
+class ImageOptimizedModel(models.Model):
+    """
+    Абстрактна база: після збереження автоматично стискає завантажені
+    зображення (поля з IMAGE_FIELDS = {"назва_поля": максимальна_ширина}).
+    """
+    IMAGE_FIELDS = {}
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        for field_name, max_width in self.IMAGE_FIELDS.items():
+            optimize_image_field(getattr(self, field_name, None), max_width)
+
 
 # Валідатор телефону: цифри, пробіли та + ( ) - ; від 7 до 25 символів.
 # Не дає ввести літери чи випадковий текст у поле телефону.
@@ -176,6 +194,7 @@ class ContactMessage(RequestWorkflowModel):
 #  КОНТЕНТ — Налаштування та тексти
 # ===========================================================================
 class SiteInfo(models.Model):
+    # Логотипи — це брендинг, тому НЕ стискаємо автоматично (на відміну від фото секцій).
     phone = models.CharField("Телефон", max_length=25, default="+38 (0362) 12-34-56",
                              validators=[PHONE_VALIDATOR],
                              help_text="Показується на сайті та клікається для дзвінка. "
@@ -202,6 +221,12 @@ class SiteInfo(models.Model):
                                         max_length=300,
                                         default="Заклад дошкільної освіти №52 м. Рівного. Всі права захищено.")
 
+    ga_measurement_id = models.CharField(
+        "Google Analytics ID", max_length=20, blank=True, default="",
+        help_text="Необов'язково. Вставте ваш GA4 ідентифікатор виду G-XXXXXXXXXX, "
+                  "щоб увімкнути аналітику відвідувачів. Порожньо — аналітика вимкнена.",
+    )
+
     class Meta:
         verbose_name = "Контакти та соцмережі"
         verbose_name_plural = "Контакти та соцмережі"
@@ -210,7 +235,9 @@ class SiteInfo(models.Model):
         return "Головні контакти сайту"
 
 
-class PageText(models.Model):
+class PageText(ImageOptimizedModel):
+    IMAGE_FIELDS = {"hero_image": 1920}
+
     # Hero
     hero_badge = models.CharField("Головна: Тег зверху", max_length=100, default="Набір на 2026/2027 рік відкрито")
     hero_title = models.CharField("Головна: Заголовок", max_length=200, default="Простір де зростає щастя")
@@ -266,6 +293,10 @@ class PageText(models.Model):
     # FAQ
     faq_title = models.CharField("FAQ: Заголовок", max_length=200, default="Відповіді на часті питання")
 
+    # Testimonials
+    testimonials_kicker = models.CharField("Відгуки: Маленький заголовок", max_length=100, default="Відгуки")
+    testimonials_title = models.CharField("Відгуки: Заголовок", max_length=200, default="Що кажуть батьки")
+
     # Contact
     contact_form_title = models.CharField("Контакти: Заголовок форми", max_length=100, default="Написати нам")
     contact_form_btn = models.CharField("Контакти: Текст кнопки", max_length=50, default="Відправити")
@@ -320,8 +351,9 @@ class DirectionCard(models.Model):
         return self.title
 
 
-class DirectionGalleryImage(models.Model):
+class DirectionGalleryImage(ImageOptimizedModel):
     """Фото для каруселі першого ряду 'Напрямки' (формат 16:9)."""
+    IMAGE_FIELDS = {"image": 1920}
     image = models.ImageField("Фото (бажано 16:9)", upload_to="directions/")
     alt = models.CharField("Опис (alt)", max_length=200, blank=True, default="")
     order = models.PositiveIntegerField("Порядок", default=0)
@@ -342,8 +374,9 @@ COLLAGE_POSITION_CHOICES = [
 ]
 
 
-class DirectionCollageImage(models.Model):
+class DirectionCollageImage(ImageOptimizedModel):
     """Фото колажу для другого ряду 'Напрямки' (3 фіксовані позиції)."""
+    IMAGE_FIELDS = {"image": 1920}
     position = models.PositiveSmallIntegerField("Позиція", choices=COLLAGE_POSITION_CHOICES, unique=True)
     image = models.ImageField("Фото", upload_to="directions/")
     alt = models.CharField("Опис (alt)", max_length=200, blank=True, default="")
@@ -357,7 +390,8 @@ class DirectionCollageImage(models.Model):
         return self.get_position_display()
 
 
-class PremiseSlide(models.Model):
+class PremiseSlide(ImageOptimizedModel):
+    IMAGE_FIELDS = {"image": 1920}
     title = models.CharField("Заголовок слайду", max_length=100)
     desc = models.CharField("Короткий опис", max_length=300)
     image = models.ImageField("Фото", upload_to="premises/", blank=True, null=True)
@@ -406,3 +440,45 @@ class FAQItem(models.Model):
 
     def __str__(self):
         return self.question
+
+
+class Testimonial(ImageOptimizedModel):
+    """Відгук батьків — секція соціального доказу на сайті."""
+    IMAGE_FIELDS = {"photo": 400}
+
+    author_name = models.CharField("Ім'я автора", max_length=100)
+    relation = models.CharField("Хто це (напр. «мама Софійки»)", max_length=100, blank=True, default="")
+    text = models.TextField("Текст відгуку")
+    photo = models.ImageField("Фото (необов'язково)", upload_to="testimonials/", blank=True, null=True)
+    rating = models.PositiveSmallIntegerField(
+        "Оцінка", default=5, choices=[(i, "★" * i) for i in range(1, 6)],
+    )
+    is_published = models.BooleanField("Опубліковано на сайті", default=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+
+    class Meta:
+        ordering = ["order", "-id"]
+        verbose_name = "Відгук"
+        verbose_name_plural = "Відгуки батьків"
+
+    def __str__(self):
+        return f"{self.author_name} ({self.relation})" if self.relation else self.author_name
+
+
+class TelegramSubscriber(models.Model):
+    """
+    Хто отримує сповіщення про нові заявки в Telegram.
+    Запис створюється автоматично, коли адміністратор надсилає боту /start.
+    """
+    chat_id = models.CharField("Chat ID", max_length=32, unique=True)
+    name = models.CharField("Ім'я у Telegram", max_length=150, blank=True, default="")
+    is_active = models.BooleanField("Отримує сповіщення", default=True)
+    created_at = models.DateTimeField("Підписався", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Telegram-підписник"
+        verbose_name_plural = "Telegram-сповіщення"
+
+    def __str__(self):
+        return self.name or self.chat_id

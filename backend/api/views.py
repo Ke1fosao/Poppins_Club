@@ -1,6 +1,7 @@
 import os
 import re
 import requests as gemini_http
+from django.http import HttpResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -9,8 +10,9 @@ from .models import (
     ContactMessage, SurveyApplication,
     SiteInfo, PageText, FAQItem,
     AboutCard, DirectionCard, DirectionGalleryImage, DirectionCollageImage,
-    PremiseSlide, ServiceGroup,
+    PremiseSlide, ServiceGroup, Testimonial,
 )
+from . import telegram_bot as tg
 
 
 def _abs_url(request, fieldfile):
@@ -62,6 +64,7 @@ def get_site_content(request):
     premises = PremiseSlide.objects.all()
     services = ServiceGroup.objects.all()
     faqs = FAQItem.objects.all()
+    testimonials = Testimonial.objects.filter(is_published=True)
 
     def card_dict(c):
         return {"title": c.title, "text": c.text, "icon": c.icon, "color": c.color}
@@ -82,6 +85,7 @@ def get_site_content(request):
             "nav_brand_accent": info.nav_brand_accent,
             "nav_cta_text": info.nav_cta_text,
             "footer_copyright": info.footer_copyright,
+            "ga_measurement_id": info.ga_measurement_id,
         },
         "content": {
             "hero_badge": text.hero_badge,
@@ -111,6 +115,9 @@ def get_site_content(request):
             "services_title": text.services_title,
 
             "faq_title": text.faq_title,
+
+            "testimonials_kicker": text.testimonials_kicker,
+            "testimonials_title": text.testimonials_title,
 
             "contact_form_title": text.contact_form_title,
             "contact_form_btn": text.contact_form_btn,
@@ -152,6 +159,16 @@ def get_site_content(request):
             for s in services
         ],
         "faqs": [{"q": f.question, "a": f.answer} for f in faqs],
+        "testimonials": [
+            {
+                "name": t.author_name,
+                "relation": t.relation,
+                "text": t.text,
+                "rating": t.rating,
+                "photo": _abs_url(request, t.photo),
+            }
+            for t in testimonials
+        ],
     }
     return Response(data)
 
@@ -250,7 +267,11 @@ def submit_contact(request):
     if errors:
         return Response({'errors': errors}, status=_http.HTTP_400_BAD_REQUEST)
 
-    ContactMessage.objects.create(name=name, phone=phone, message=message)
+    msg = ContactMessage.objects.create(name=name, phone=phone, message=message)
+    try:
+        tg.notify_new_contact(msg)
+    except Exception:
+        pass  # сповіщення не повинні впливати на відповідь користувачу
     return Response({'status': 'Успішно відправлено'})
 
 
@@ -574,7 +595,7 @@ def submit_survey(request):
             status=_http.HTTP_400_BAD_REQUEST,
         )
 
-    SurveyApplication.objects.create(
+    app = SurveyApplication.objects.create(
         # Контакти
         child_name=_join(data.get('childName'))[:100],
         parent_name=_join(data.get('parentName'))[:100],
@@ -607,4 +628,57 @@ def submit_survey(request):
         # Крок 5 — підтримка
         benefits=_join(data.get('benefits'))[:200],
     )
+    try:
+        tg.notify_new_survey(app)
+    except Exception:
+        pass  # сповіщення не повинні впливати на відповідь користувачу
     return Response({'status': 'Анкету збережено'})
+
+
+# ============================================================================
+#  Telegram webhook — Telegram надсилає сюди оновлення (повідомлення, кнопки)
+# ============================================================================
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def telegram_webhook(request, secret):
+    # Секрет у шляху — захист від сторонніх запитів
+    if not tg.webhook_secret() or secret != tg.webhook_secret():
+        return Response(status=_http_status.HTTP_404_NOT_FOUND)
+    try:
+        tg.handle_update(request.data)
+    except Exception:
+        pass
+    return Response({'ok': True})
+
+
+# ============================================================================
+#  SEO: sitemap.xml та robots.txt
+# ============================================================================
+def sitemap_xml(request):
+    base = request.build_absolute_uri('/').rstrip('/')
+    paths = ['/', '/anketa']
+    items = "".join(
+        f"<url><loc>{base}{p}</loc><changefreq>weekly</changefreq>"
+        f"<priority>{'1.0' if p == '/' else '0.7'}</priority></url>"
+        for p in paths
+    )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f'{items}</urlset>'
+    )
+    return HttpResponse(xml, content_type="application/xml")
+
+
+def robots_txt(request):
+    base = request.build_absolute_uri('/').rstrip('/')
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /api/",
+        f"Sitemap: {base}/sitemap.xml",
+        "",
+    ])
+    return HttpResponse(body, content_type="text/plain")

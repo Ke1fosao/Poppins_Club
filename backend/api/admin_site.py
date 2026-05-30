@@ -21,6 +21,7 @@ ADMIN_SECTIONS = [
     ("📥 Звернення від батьків", [
         "SurveyApplication",
         "ContactMessage",
+        "TelegramSubscriber",
     ]),
     ("⚙️ Налаштування та тексти", [
         "SiteInfo",
@@ -34,6 +35,7 @@ ADMIN_SECTIONS = [
         "PremiseSlide",
         "ServiceGroup",
         "FAQItem",
+        "Testimonial",
     ]),
 ]
 

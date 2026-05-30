@@ -1939,16 +1939,35 @@ const SurveyFlow = ({ navigate, siteData }) => {
   );
 };
 
-const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
+const CHAT_STORAGE_KEY = 'poppins_chat_v1';
+const CHAT_SUGGESTIONS = [
+  'Як записати дитину?',
+  'Які є вікові групи?',
+  'Що з харчуванням?',
+  'Які умови безпеки?',
+];
+
+const AIChatbot = ({ isOpen, setIsOpen, siteData, onOpenSurvey }) => {
   const settings = siteData.settings || {};
   const brand = `${settings.nav_brand || 'ЗДО'} ${settings.nav_brand_accent || ''}`.trim();
 
   const greeting = `Вітаю! 👋 Я віртуальний помічник садочка ${brand}. Чим можу допомогти? Запитайте про набір, групи, харчування, документи — або що завгодно інше.`;
 
-  const [messages, setMessages] = useState([{ role: 'model', text: greeting }]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || 'null');
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch { /* ignore */ }
+    return [{ role: 'model', text: greeting }];
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Збереження історії діалогу між перезавантаженнями (останні 50 повідомлень)
+  useEffect(() => {
+    try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-50))); } catch { /* ignore */ }
+  }, [messages]);
 
   // Як тільки приходять справжні дані з адмінки — оновлюємо привітання,
   // але тільки якщо користувач ще нічого не писав (щоб не стерти діалог).
@@ -1967,9 +1986,9 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
 
   // Усе спілкування з Gemini проходить через Django-проксі /api/chat/.
   // API-ключ ніколи не потрапляє у фронт — живе лише в env-змінних бекенду.
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMessage = input.trim();
+  const handleSend = async (preset) => {
+    const userMessage = (typeof preset === 'string' ? preset : input).trim();
+    if (!userMessage || isLoading) return;
     const newMessages = [...messages, { role: 'user', text: userMessage }];
     setMessages(newMessages);
     setInput('');
@@ -2010,6 +2029,12 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
 
   const resetChat = () => {
     setMessages([{ role: 'model', text: greeting }]);
+    try { localStorage.removeItem(CHAT_STORAGE_KEY); } catch { /* ignore */ }
+  };
+
+  const openSurveyFromChat = () => {
+    setIsOpen(false);
+    onOpenSurvey?.();
   };
 
   // Блокуємо скрол body коли чат відкритий на мобільному (щоб не «двіжки» сторінки під ним)
@@ -2108,8 +2133,29 @@ const AIChatbot = ({ isOpen, setIsOpen, siteData }) => {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Швидкі підказки + кнопка анкети */}
+        {!isLoading && (
+          <div className="px-3 pt-2 bg-white flex flex-wrap gap-2 border-t border-slate-100">
+            {messages.length <= 1 && CHAT_SUGGESTIONS.map((q) => (
+              <button
+                key={q}
+                onClick={() => handleSend(q)}
+                className="text-xs sm:text-[13px] px-3 py-1.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100 hover:bg-teal-100 active:scale-95 transition-all"
+              >
+                {q}
+              </button>
+            ))}
+            <button
+              onClick={openSurveyFromChat}
+              className="text-xs sm:text-[13px] px-3 py-1.5 rounded-full bg-amber-400 text-amber-950 font-semibold hover:bg-amber-300 active:scale-95 transition-all flex items-center gap-1"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Заповнити анкету
+            </button>
+          </div>
+        )}
+
         {/* Інпут — товщий для зручної мобільної взаємодії; pb для safe area */}
-        <div className="p-3 sm:p-3 bg-white border-t border-slate-100 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="p-3 sm:p-3 bg-white pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-full border border-slate-200 focus-within:border-teal-300 focus-within:ring-2 focus-within:ring-teal-100 transition-colors">
             <input
               type="text"
@@ -2159,6 +2205,84 @@ const BackToTop = () => {
   );
 };
 
+// Google Analytics 4 — завантажується ЛИШЕ після згоди на cookie
+const loadGA = (id) => {
+  if (!id || window.__pcGaLoaded) return;
+  window.__pcGaLoaded = true;
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = `https://www.googletagmanager.com/gtag/js?id=${id}`;
+  document.head.appendChild(s);
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function () { window.dataLayer.push(arguments); };
+  window.gtag('js', new Date());
+  window.gtag('config', id, { anonymize_ip: true });
+};
+
+const COOKIE_KEY = 'poppins_cookie_consent';
+
+const CookieBanner = ({ onConsent }) => (
+  <div className="fixed bottom-0 inset-x-0 z-[60] p-3 sm:p-4 animate-fade-in-up">
+    <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+      <p className="text-sm text-slate-600 flex-grow text-center sm:text-left break-words">
+        🍪 Ми використовуємо cookie для аналітики, щоб робити сайт зручнішим для вас.
+      </p>
+      <div className="flex gap-2 shrink-0">
+        <button onClick={() => onConsent('declined')} className="px-4 py-2 rounded-xl text-slate-600 font-semibold hover:bg-slate-100 transition-colors">
+          Відхилити
+        </button>
+        <button onClick={() => onConsent('accepted')} className="px-5 py-2 rounded-xl bg-teal-500 text-white font-bold hover:bg-teal-600 transition-colors">
+          Прийняти
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// Секція «Відгуки батьків» (ховається, якщо відгуків немає)
+const Testimonials = ({ content, items }) => {
+  if (!items || items.length === 0) return null;
+  return (
+    <section id="testimonials" className="py-24 px-6 bg-white">
+      <div className="max-w-7xl mx-auto" data-reveal>
+        <div className="text-center mb-14">
+          <h2 className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-3">
+            {content.testimonials_kicker || 'Відгуки'}
+          </h2>
+          <h3 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-800 break-words">
+            {content.testimonials_title || 'Що кажуть батьки'}
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          {items.map((t, i) => (
+            <figure key={i} className="bg-[#FFFDF9] rounded-[2rem] p-7 sm:p-8 border border-slate-100 shadow-sm flex flex-col transition-transform hover:-translate-y-1 duration-300">
+              <div className="flex gap-1 mb-4 text-amber-400">
+                {Array.from({ length: Math.max(1, Math.min(5, t.rating || 5)) }).map((_, k) => (
+                  <Star key={k} className="w-4 h-4 fill-current" />
+                ))}
+              </div>
+              <blockquote className="text-slate-700 leading-relaxed break-words flex-grow">«{t.text}»</blockquote>
+              <figcaption className="flex items-center gap-3 mt-6 pt-5 border-t border-slate-100">
+                {t.photo ? (
+                  <img src={t.photo} alt={t.name} loading="lazy" decoding="async" className="w-12 h-12 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 font-bold text-lg flex items-center justify-center shrink-0">
+                    {(t.name || '?').trim().charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800 break-words leading-tight">{t.name}</p>
+                  {t.relation && <p className="text-sm text-slate-500 break-words">{t.relation}</p>}
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const DEFAULT_DATA = {
   settings: {
     phone: "+38 (0362) 12-34-56",
@@ -2175,6 +2299,7 @@ const DEFAULT_DATA = {
     nav_brand_accent: "№52",
     nav_cta_text: "Заповнити анкету",
     footer_copyright: "Заклад дошкільної освіти №52 м. Рівного. Всі права захищено.",
+    ga_measurement_id: "",
   },
   content: {
     hero_badge: "Набір на 2026/2027 рік відкрито",
@@ -2198,6 +2323,8 @@ const DEFAULT_DATA = {
     services_kicker: "Вікові групи",
     services_title: "Оберіть свій формат",
     faq_title: "Відповіді на часті питання",
+    testimonials_kicker: "Відгуки",
+    testimonials_title: "Що кажуть батьки",
     contact_form_title: "Написати нам",
     contact_form_btn: "Відправити",
   },
@@ -2209,12 +2336,20 @@ const DEFAULT_DATA = {
   premises: [],
   services: [],
   faqs: [],
+  testimonials: [],
 };
 
 export default function App() {
   const [path, navigate] = useRoute();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [siteData, setSiteData] = useState(DEFAULT_DATA);
+  const [cookieConsent, setCookieConsent] = useState(() => {
+    try { return localStorage.getItem(COOKIE_KEY); } catch { return null; }
+  });
+  const handleConsent = (val) => {
+    try { localStorage.setItem(COOKIE_KEY, val); } catch { /* ignore */ }
+    setCookieConsent(val);
+  };
 
   useEffect(() => {
     fetch(`${API_BASE}/api/content/`)
@@ -2233,6 +2368,7 @@ export default function App() {
           premises: data.premises || [],
           services: data.services || [],
           faqs: data.faqs || [],
+          testimonials: data.testimonials || [],
         }));
       })
       .catch(err => console.error("Бекенд ще не запущено або помилка:", err));
@@ -2299,7 +2435,15 @@ export default function App() {
     els.forEach(el => io.observe(el));
     const failsafe = setTimeout(() => els.forEach(el => el.classList.add('reveal-in')), 1800);
     return () => { io.disconnect(); clearTimeout(failsafe); };
-  }, [path]);
+    // siteData у залежностях — щоб секції, які з'являються після завантаження
+    // даних (напр. «Відгуки»), теж потрапили під спостереження появи.
+  }, [path, siteData]);
+
+  // Аналітика вантажиться ЛИШЕ після згоди на cookie і лише якщо заданий GA-ключ
+  useEffect(() => {
+    const gaId = siteData.settings.ga_measurement_id;
+    if (cookieConsent === 'accepted' && gaId) loadGA(gaId);
+  }, [cookieConsent, siteData.settings.ga_measurement_id]);
 
   const isAnketa = path.startsWith('/anketa');
 
@@ -2324,6 +2468,7 @@ export default function App() {
             <Premises content={siteData.content} slides={siteData.premises} />
             <Services onOpenSurvey={() => navigate('/anketa')} content={siteData.content} services={siteData.services} />
             <FAQ content={siteData.content} faqs={siteData.faqs} />
+            <Testimonials content={siteData.content} items={siteData.testimonials} />
             <ContactAndMap settings={siteData.settings} content={siteData.content} />
           </main>
           <Footer settings={siteData.settings} />
@@ -2331,7 +2476,11 @@ export default function App() {
       )}
 
       {!isAnketa && <BackToTop />}
-      <AIChatbot isOpen={isChatOpen} setIsOpen={setIsChatOpen} siteData={siteData} />
+      <AIChatbot isOpen={isChatOpen} setIsOpen={setIsChatOpen} siteData={siteData} onOpenSurvey={() => navigate('/anketa')} />
+
+      {cookieConsent == null && siteData.settings.ga_measurement_id && (
+        <CookieBanner onConsent={handleConsent} />
+      )}
     </div>
   );
 }
